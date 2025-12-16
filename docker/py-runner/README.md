@@ -1,0 +1,15 @@
+- What's included
+    - included: git, build essential - compiles programs
+    - run as non-root user - runner, uid - 1000
+- How to build
+    - in project root directory
+        - docker build \
+            -t ghcr.io/agentbench/py-runner:0.1.0 \
+            -f docker/py-runner/Dockerfile \
+            .
+- How to verify
+    - docker run --rm ghcr.io/agentbench/py-runner:0.1.0 <command>
+    - commands
+        - whoami - runner
+        - python --version - 3.11.14
+        - env - prints environment variables
