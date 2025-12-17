@@ -40,6 +40,8 @@ Thumbs.db
 # Project specific
 artifacts/
 temp_dir_whp/
+private/
+plan/
 
 # Environment
 .env

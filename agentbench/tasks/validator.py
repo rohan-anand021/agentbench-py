@@ -1,12 +1,15 @@
 from pathlib import Path
 import logging
-import time
+import ulid
+from datetime import datetime
 
 from agentbench.tasks.models import ValidationResult, TaskSpec
 from agentbench.util.paths import ensure_dir
 from agentbench.util.git import clone_repo, checkout_commit
 from agentbench.util.process import check_exit_code
 from agentbench.sandbox.docker_sandbox import DockerSandbox
+from agentbench.schemas.attempt_record import AttemptRecord, TimestampInfo, BaselineValidationResult, TaskResult
+from agentbench.util.jsonl import append_jsonl
 
 logger = logging.getLogger(__name__)
 
@@ -26,150 +29,195 @@ def validate_baseline(task: TaskSpec,
         - If timeout: task is INVALID (timeout)
         - Return `ValidationResult`
     """
+
+    """
+    ### Integrate Attempt Recording
+    - [ ] Update `validate_baseline()` to record attempts:
+    - Generate ULID for each validation run
+    - Record start/end timestamps
+    - Write `AttemptRecord` to `attempts.jsonl` in the run directory
+    """
+
+    """
+    - `BaselineValidationResult`: 
+        `attempted: bool`, 
+        `failed_as_expected: bool`, 
+        `exit_code: int`
+
+    - `TaskResult`: 
+        `passed: bool`, 
+        `exit_code: int`, 
+        `failure_reason: str | None`
+    """
+
     repo_dir = ensure_dir(workspace_dir / 'repo')
     valid = False
     error_details = None
+    started_at = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    run_id = str(ulid.new())
+    task_id = task.id
+    suite = task.suite
+    exit_code = None
+    stdout_path = None
+    stderr_path = None
+    attempted = False
 
-    stdout_path, stderr_path, exit_code = clone_repo(
-        url = task.repo.url,
-        dest = repo_dir,
-        logs_dir = logs_dir
-    )
-
-    error = check_exit_code(
-        cmd_name = 'git_clone',
-        exit_code = exit_code
-    )
-
-    if error is not None:
-        raise error
-
-    stdout_path, stderr_path, exit_code = checkout_commit(
-        repo_dir = repo_dir,
-        commit = task.repo.commit,
-        logs_dir = logs_dir
-    )
-
-    error = check_exit_code(
-        cmd_name = 'git_checkout',
-        exit_code = exit_code
-    )
-
-    if error is not None:
-        raise error
-
-    sandbox = DockerSandbox(
-        image = task.environment.docker_image,
-        workdir = task.environment.workdir,
-    )
-
-    setup_commands = " && ".join(task.setup.commands)
-    repo_relative_path = "repo"
-    setup_commands = f"cd {repo_relative_path} && {setup_commands}"
-
-    logger.info("Running setup commands")
-    logger.debug("Setup commands: %s", setup_commands)
-
-    setup_run_result = sandbox.run(
-        workspace_host_path = workspace_dir,
-        command = setup_commands,
-        network = "bridge",
-        timeout_sec = task.environment.timeout_sec,
-        stdout_path = Path(logs_dir, "setup_stdout.txt"),
-        stderr_path = Path(logs_dir, "setup_stderr.txt"),
-    )
-
-    error = check_exit_code(
-        cmd_name = "Setup run",
-        exit_code = setup_run_result.exit_code
-    )
-    
-    if error is not None:
-        if setup_run_result.exit_code == 124:
-            error_details = "setup_timeout"
-        else:
-            error_details = "setup_failed"
-        return ValidationResult(
-            task_id = task.id,
-            valid = valid,
-            exit_code = setup_run_result.exit_code,
-            stdout_path = setup_run_result.stdout_path,
-            stderr_path = setup_run_result.stderr_path,
-            error_reason = error_details,
-            duration_sec = 0.0
+    try:
+        stdout_path, stderr_path, exit_code = clone_repo(
+            url = task.repo.url,
+            dest = repo_dir,
+            logs_dir = logs_dir
         )
 
+        error = check_exit_code(
+            cmd_name = 'git_clone',
+            exit_code = exit_code
+        )
 
-    logger.debug("Setup completed successfully")
+        if error is not None:
+            error_details = "git_clone_failed"
+            raise error
 
-    run_cmd = task.run.command
-    run_cmd = f"cd repo && {run_cmd}"
+        stdout_path, stderr_path, exit_code = checkout_commit(
+            repo_dir = repo_dir,
+            commit = task.repo.commit,
+            logs_dir = logs_dir
+        )
 
-    logger.info("Running task command")
-    logger.debug("Run command: %s", run_cmd)
+        error = check_exit_code(
+            cmd_name = 'git_checkout',
+            exit_code = exit_code
+        )
 
-    start = time.perf_counter()
+        if error is not None:
+            error_details = "git_checkout_failed"
+            raise error
 
-    run_run_result = sandbox.run(
-        workspace_host_path = workspace_dir,
-        command = run_cmd,
-        network = "none",
-        timeout_sec = task.environment.timeout_sec,
-        stdout_path = Path(logs_dir, "run_stdout.txt"),
-        stderr_path = Path(logs_dir, "run_stderr.txt"),
-    )
+        sandbox = DockerSandbox(
+            image = task.environment.docker_image,
+            workdir = task.environment.workdir,
+        )
 
-    end = time.perf_counter()
+        setup_commands = " && ".join(task.setup.commands)
+        repo_relative_path = "repo"
+        setup_commands = f"cd {repo_relative_path} && {setup_commands}"
 
-    run_exit_code = run_run_result.exit_code
+        logger.info("Running setup commands")
+        logger.debug("Setup commands: %s", setup_commands)
 
-    match run_exit_code:
-        case 0:
-            error_details = "baseline_passed"
-        case 1:
-            valid = True
-            error_details = None
-        case 2:
-            error_details = "execution_interruption_or_user_error"
-        case 3:
-            error_details = "internal_error"
-        case 4:
-            error_details = "cmd_line_error"
-        case 5:
-            error_details = "no_tests_collected"
-        case 124:
-            error_details = "timeout"
-        case _:
-            error_details = "unexpected_failure"
+        setup_run_result = sandbox.run(
+            workspace_host_path = workspace_dir,
+            command = setup_commands,
+            network = "bridge",
+            timeout_sec = task.environment.timeout_sec,
+            stdout_path = Path(logs_dir, "setup_stdout.txt"),
+            stderr_path = Path(logs_dir, "setup_stderr.txt"),
+        )
+
+        exit_code = setup_run_result.exit_code
+        stdout_path = setup_run_result.stdout_path
+        stderr_path = setup_run_result.stderr_path
+
+        error = check_exit_code(
+            cmd_name = "Setup run",
+            exit_code = setup_run_result.exit_code
+        )
+        
+        if error is not None:
+            if setup_run_result.exit_code == 124:
+                error_details = "setup_timeout"
+            else:
+                error_details = "setup_failed"
+            raise error
+
+        logger.debug("Setup completed successfully")
+
+        run_cmd = task.run.command
+        run_cmd = f"cd repo && {run_cmd}"
+
+        logger.info("Running task command")
+        logger.debug("Run command: %s", run_cmd)
+
+        attempted = True
+
+        run_run_result = sandbox.run(
+            workspace_host_path = workspace_dir,
+            command = run_cmd,
+            network = "none",
+            timeout_sec = task.environment.timeout_sec,
+            stdout_path = Path(logs_dir, "run_stdout.txt"),
+            stderr_path = Path(logs_dir, "run_stderr.txt"),
+        )
+
+        exit_code = run_run_result.exit_code
+        stdout_path = run_run_result.stdout_path
+        stderr_path = run_run_result.stderr_path
+
+        match exit_code:
+            case 0:
+                error_details = "baseline_passed"
+            case 1:
+                valid = True
+                error_details = None
+            case 2:
+                error_details = "execution_interruption_or_user_error"
+            case 3:
+                error_details = "internal_error"
+            case 4:
+                error_details = "cmd_line_error"
+            case 5:
+                error_details = "no_tests_collected"
+            case 124:
+                error_details = "timeout"
+            case _:
+                error_details = "unexpected_failure"
+    
+    except Exception as e:
+        logger.error("Validation failed: %s", str(e))
+    
+    finally:
+        ended_at = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        duration_sec = (ended_at - started_at).total_seconds()
+        
+        artifacts = {}
+        if stdout_path is not None:
+            artifacts["stdout"] = str(stdout_path)
+        if stderr_path is not None:
+            artifacts["stderr"] = str(stderr_path)
+        artifacts["logs_dir"] = str(logs_dir)
+
+        attempt_record = AttemptRecord(
+            run_id = run_id,
+            task_id = task_id,
+            suite = suite,
+            timestamps = TimestampInfo(
+                started_at = started_at,
+                ended_at = ended_at
+            ),
+            duration_sec = duration_sec,
+            baseline_validation = BaselineValidationResult(
+                attempted = attempted,
+                failure_as_expected = valid,
+                exit_code = exit_code if exit_code is not None else -1
+            ),
+            result = TaskResult(
+                passed = valid,
+                exit_code = exit_code if exit_code is not None else -1,
+                failure_reason = error_details
+            ),
+            artifacts_path = artifacts
+        )
+        attempts_file = logs_dir.parent / "attempts.jsonl"
+        append_jsonl(attempts_file, attempt_record.model_dump(mode='json'))
 
     return ValidationResult(
         task_id = task.id,
         valid = valid,
-        exit_code = run_exit_code,
-        stdout_path = run_run_result.stdout_path,
-        stderr_path = run_run_result.stderr_path,
+        exit_code = exit_code if exit_code is not None else -1,
+        stdout_path = stdout_path,
+        stderr_path = stderr_path,
         error_reason = error_details,
-        duration_sec = end - start
+        duration_sec = duration_sec
     )
-    
-
-
-
-
-
-
-
-
-    
-    
-
-
-
-    
-    
-
-    
-
-    
 
 
