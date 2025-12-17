@@ -1,13 +1,15 @@
-from pathlib import Path
 import json
-import tempfile
-import shutil
-import os
-from filelock import FileLock
-from typing import Iterator
 import logging
+import os
+import shutil
+import tempfile
+from collections.abc import Iterator
+from pathlib import Path
+
+from filelock import FileLock
 
 logger = logging.getLogger(__name__)
+
 
 def append_jsonl(path: Path, record: dict):
     """
@@ -27,9 +29,7 @@ def append_jsonl(path: Path, record: dict):
         json_line = json.dumps(record) + "\n"
 
         with tempfile.NamedTemporaryFile(
-            mode = "wb",
-            delete = False,
-            dir = path.parent
+            mode="wb", delete=False, dir=path.parent
         ) as tmp:
             tmp_path = Path(tmp.name)
 
@@ -52,7 +52,7 @@ def read_jsonl(path: Path) -> Iterator[dict]:
         - Log warning (don't crash) for malformed lines
     """
 
-    with path.open("r", encoding = "utf-8") as f:
+    with path.open("r", encoding="utf-8") as f:
         for line in f:
             line = line.strip()
 
@@ -66,16 +66,3 @@ def read_jsonl(path: Path) -> Iterator[dict]:
             except Exception as e:
                 logger.warning("Line %s could not be read: %s", line, str(e))
                 continue
-                
-    
-
-    
-    
-    
-    
-
-    
-
-
-
-

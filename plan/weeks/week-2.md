@@ -11,14 +11,16 @@ By end of week: Load and enumerate all tasks in a suite, run baseline validation
 |-----|-------|--------|
 | Day 1 | Task Loader Module | ✅ COMPLETE |
 | Day 2 | Baseline Validator | ✅ COMPLETE |
-| Day 3 | JSONL Attempt Records | ⏳ Not started |
-| Day 4 | Suite Runner + CLI | ⏳ Not started |
-| Day 5 | Polish + Additional Tasks | ⏳ Not started |
+| Day 3 | JSONL Attempt Records | ✅ COMPLETE |
+| Day 4 | Suite Runner + CLI | ✅ COMPLETE |
+| Day 5 | Polish + Additional Tasks | ✅ COMPLETE |
 
 ### Notes
 - **Day 1**: Created `models.py` (for TaskSpec and nested models) and `validation.py` (extracted from run_task.py) in addition to the planned files.
 - **Day 2**: Created `validator.py` with comprehensive exit code handling. Added `ValidationResult` to `models.py`. Created `test_validator.py` with 8 tests (2 integration, 6 unit). Refactored `run_task.py` to use loader and git utilities.
-- Minor linting issues remain (import ordering, line lengths) - can be auto-fixed with `ruff check --fix`
+- **Day 3**: Created `jsonl.py` with atomic writes using temp files and file locking via `filelock`. Created `attempt_record.py` with Pydantic models for structured logging.
+- **Day 4**: Created `suite_runner.py` with rich progress bar, color-coded output, and summary table. Added `validate-suite` and `list-tasks` CLI commands. Full integration with `attempts.jsonl` and `run.json`.
+- **Day 5**: Created 3 additional test tasks (toy_pass_pytest, toy_timeout, toy_setup_fail). Added SIGINT handling, empty suite handling, missing suite error handling, partial failure handling. Added summary report with failure reason breakdown. Ran ruff check and format.
 
 ---
 
@@ -175,12 +177,12 @@ Every task attempt should produce a structured record. This enables:
 - Comparing runs
 
 ### JSONL Utilities
-- [ ] Create `agentbench/util/jsonl.py`:
+- [x] Create `agentbench/util/jsonl.py`:
   - Function `append_jsonl(path: Path, record: dict) -> None`:
     - Open file in append mode
     - Write JSON + newline
     - Use atomic write pattern (write to temp, rename)
-    - Handle file locking for concurrent writes (optional, can use `filelock` library)
+    - Handle file locking for concurrent writes (uses `filelock` library)
   
   - Function `read_jsonl(path: Path) -> Iterator[dict]`:
     - Open file, yield one parsed dict per line
@@ -188,7 +190,7 @@ Every task attempt should produce a structured record. This enables:
     - Log warning (don't crash) for malformed lines
 
 ### Attempt Record Schema
-- [ ] Create `agentbench/schemas/attempt_record.py`:
+- [x] Create `agentbench/schemas/attempt_record.py`:
   - Define `AttemptRecord` Pydantic model matching spec:
     ```python
     class AttemptRecord(BaseModel):
@@ -207,23 +209,23 @@ Every task attempt should produce a structured record. This enables:
     - `TaskResult`: `passed: bool`, `exit_code: int`, `failure_reason: str | None`
 
 ### Integrate Attempt Recording
-- [ ] Update `validate_baseline()` to record attempts:
+- [x] Update `validate_baseline()` to record attempts:
   - Generate ULID for each validation run
   - Record start/end timestamps
   - Write `AttemptRecord` to `attempts.jsonl` in the run directory
 
 ### End of Day 3 Checkpoint
-- [ ] `append_jsonl()` correctly writes records
-- [ ] `read_jsonl()` correctly reads them back
-- [ ] Running validation produces `attempts.jsonl` with structured records
-- [ ] Schema validates correctly with Pydantic
+- [x] `append_jsonl()` correctly writes records
+- [x] `read_jsonl()` correctly reads them back
+- [x] Running validation produces `attempts.jsonl` with structured records
+- [x] Schema validates correctly with Pydantic
 
 ---
 
 ## Day 4 (Thursday): Suite Runner + CLI
 
 ### Suite Runner
-- [ ] Create `agentbench/suite_runner.py`:
+- [x] Create `agentbench/suite_runner.py`:
   - Function `run_suite(suite_name: str, tasks_root: Path, out_dir: Path) -> Path`:
     - Load all tasks in suite using `load_suite()`
     - Create run directory: `<out_dir>/runs/<timestamp>__<suite>__baseline/`
@@ -245,7 +247,7 @@ Every task attempt should produce a structured record. This enables:
     - Return run directory path
 
 ### CLI Commands
-- [ ] Update `agentbench/cli.py`:
+- [x] Update `agentbench/cli.py`:
   - Add `validate-suite` command:
     ```
     @app.command('validate-suite')
@@ -281,17 +283,17 @@ Every task attempt should produce a structured record. This enables:
     ```
 
 ### Progress Reporting
-- [ ] Use `rich` library for better console output:
+- [x] Use `rich` library for better console output:
   - Progress bar for suite validation
   - Color-coded status (green for valid, red for invalid)
   - Summary table at the end
 
 ### End of Day 4 Checkpoint
-- [ ] `uv run agentbench list-tasks custom-dev` shows toy_fail_pytest
-- [ ] `uv run agentbench validate-suite custom-dev` runs validation
-- [ ] Progress is displayed during execution
-- [ ] `attempts.jsonl` is created with all results
-- [ ] `run.json` contains suite metadata
+- [x] `uv run agentbench list-tasks custom-dev` shows toy_fail_pytest
+- [x] `uv run agentbench validate-suite custom-dev` runs validation
+- [x] Progress is displayed during execution
+- [x] `attempts.jsonl` is created with all results
+- [x] `run.json` contains suite metadata
 
 ---
 
@@ -300,34 +302,34 @@ Every task attempt should produce a structured record. This enables:
 ### Add More Test Tasks
 To properly test suite functionality, create 2-3 more toy tasks:
 
-- [ ] Create `tasks/custom-dev/toy_pass_pytest/task.yaml`:
+- [x] Create `tasks/custom-dev/toy_pass_pytest/task.yaml`:
   - A task where tests already pass (should be marked INVALID)
-  - Use same toy_repo but with a "fixed" commit
+  - Uses commit `e0b5530` with fixed add function
   - This tests the "baseline passed unexpectedly" detection
 
-- [ ] Create `tasks/custom-dev/toy_timeout/task.yaml`:
-  - A task with a very short timeout (e.g., 5 seconds)
+- [x] Create `tasks/custom-dev/toy_timeout/task.yaml`:
+  - A task with a very short timeout (5 seconds)
   - Run command: `sleep 60 && pytest -q`
   - This tests timeout handling
 
-- [ ] Create `tasks/custom-dev/toy_setup_fail/task.yaml`:
-  - A task with broken setup (e.g., `pip install nonexistent-package-xyz`)
+- [x] Create `tasks/custom-dev/toy_setup_fail/task.yaml`:
+  - A task with broken setup (`pip install nonexistent-package-xyz-12345`)
   - This tests setup failure handling
 
 ### Error Handling & Edge Cases
-- [ ] Handle empty suite (no tasks found): print warning, exit gracefully
-- [ ] Handle missing suite directory: raise `SuiteNotFoundError`
-- [ ] Handle partial failures: continue with other tasks, summarize failures at end
-- [ ] Ensure Ctrl+C (SIGINT) during suite run:
+- [x] Handle empty suite (no tasks found): print warning, exit gracefully
+- [x] Handle missing suite directory: raise `SuiteNotFoundError`
+- [x] Handle partial failures: continue with other tasks, summarize failures at end
+- [x] Ensure Ctrl+C (SIGINT) during suite run:
   - Writes partial `attempts.jsonl` (don't lose progress)
   - Updates `run.json` with `interrupted: true`
 
 ### Summary Report (Preview of Week 7)
-- [ ] Add simple summary output at end of `validate-suite`:
+- [x] Add simple summary output at end of `validate-suite`:
   ```
-  ════════════════════════════════════════
+  ════════════════════════════════════════════
   Suite Validation Complete: custom-dev
-  ════════════════════════════════════════
+  ════════════════════════════════════════════
   Total tasks:    4
   Valid:          2 (50%)
   Invalid:        2 (50%)
@@ -338,25 +340,25 @@ To properly test suite functionality, create 2-3 more toy tasks:
   ```
 
 ### Linting & Formatting
-- [ ] Run `uv run ruff check agentbench/`
-- [ ] Fix any linting issues
-- [ ] Run `uv run ruff format agentbench/`
+- [x] Run `uv run ruff check agentbench/`
+- [x] Fix any linting issues
+- [x] Run `uv run ruff format agentbench/`
 
 ### Documentation
-- [ ] Add docstrings to all new modules and functions
-- [ ] Update `agentbench/cli.py` help strings
+- [x] Add docstrings to all new modules and functions
+- [x] Update `agentbench/cli.py` help strings
 
 ### Week 2 Commit
 - [ ] Stage all changes
 - [ ] Commit with message: "Week 2: task loader + suite runner + baseline validation"
 
 ### End of Day 5 / Week 2 Checkpoint
-- [ ] Suite with 4 tasks can be validated
-- [ ] Invalid tasks (baseline passes, setup fails, timeout) are detected
-- [ ] `attempts.jsonl` contains structured records for all attempts
-- [ ] `run.json` contains suite-level metadata
-- [ ] Progress reporting works
-- [ ] All code passes ruff linting
+- [x] Suite with 4 tasks can be validated
+- [x] Invalid tasks (baseline passes, setup fails, timeout) are detected
+- [x] `attempts.jsonl` contains structured records for all attempts
+- [x] `run.json` contains suite-level metadata
+- [x] Progress reporting works
+- [x] All code passes ruff linting
 
 ---
 
@@ -364,16 +366,16 @@ To properly test suite functionality, create 2-3 more toy tasks:
 
 | Criterion | How to Verify | Status |
 |-----------|---------------|--------|
-| Task loader works | `load_suite()` returns list of TaskSpec | |
-| Suite discovery | `list-tasks custom-dev` shows all tasks | |
-| Baseline validation | `validate-suite` correctly identifies valid/invalid | |
-| Invalid detection | Task with passing tests marked invalid | |
-| Setup failure detection | Task with broken setup marked invalid | |
-| Timeout detection | Task exceeding timeout marked invalid | |
-| JSONL logging | `attempts.jsonl` contains all records | |
-| Suite metadata | `run.json` contains run info | |
-| Progress reporting | Console shows progress during run | |
-| Graceful errors | Missing suite raises clear error | |
+| Task loader works | `load_suite()` returns list of TaskSpec | ✅ |
+| Suite discovery | `list-tasks custom-dev` shows all tasks | ✅ |
+| Baseline validation | `validate-suite` correctly identifies valid/invalid | ✅ |
+| Invalid detection | Task with passing tests marked invalid | ✅ |
+| Setup failure detection | Task with broken setup marked invalid | ✅ |
+| Timeout detection | Task exceeding timeout marked invalid | ✅ |
+| JSONL logging | `attempts.jsonl` contains all records | ✅ |
+| Suite metadata | `run.json` contains run info | ✅ |
+| Progress reporting | Console shows progress during run | ✅ |
+| Graceful errors | Missing suite raises clear error | ✅ |
 
 ---
 
@@ -412,36 +414,38 @@ agentbench/
       test_validator.py      DONE (Day 2) - 8 tests (2 integration, 6 unit)
   
   schemas/
-    __init__.py              TODO (if not exists)
-    attempt_record.py        TODO (Day 3)
+    attempt_record.py        DONE (Day 3) - AttemptRecord, TimestampInfo, etc.
   
   util/
     git.py                   DONE (Day 2) - clone_repo(), checkout_commit()
-    jsonl.py                 TODO (Day 3)
+    jsonl.py                 DONE (Day 3) - append_jsonl(), read_jsonl() with atomic writes
   
-  suite_runner.py            TODO (Day 4)
-  cli.py                     TODO (Day 4) - add validate-suite, list-tasks commands
+  suite_runner.py            DONE (Day 4) - run_suite() with rich progress, SIGINT handling
+  cli.py                     DONE (Day 4) - validate-suite, list-tasks commands
 
 tasks/
   custom-dev/
+    toy_fail_pytest/
+      task.yaml              DONE (Week 1)
     toy_pass_pytest/
-      task.yaml              TODO (Day 5)
+      task.yaml              DONE (Day 5) - uses fixed commit e0b5530
     toy_timeout/
-      task.yaml              TODO (Day 5)
+      task.yaml              DONE (Day 5) - 5 second timeout
     toy_setup_fail/
-      task.yaml              TODO (Day 5)
+      task.yaml              DONE (Day 5) - nonexistent pip package
 ```
 
 ---
 
 ## Dependencies
 
-No new dependencies required. All functionality uses:
+All functionality uses:
 - `pydantic` (already installed) - for schemas
 - `pyyaml` (already installed) - for YAML parsing
 - `rich` (already installed) - for progress/formatting
 - `typer` (already installed) - for CLI
 - `ulid` (already installed) - for run IDs
+- `filelock` (added Day 3) - for concurrent JSONL write safety
 
 ---
 

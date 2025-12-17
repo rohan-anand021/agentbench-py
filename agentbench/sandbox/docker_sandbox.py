@@ -63,7 +63,11 @@ class DockerSandbox:
             command,
         ]
 
-        logger.debug("Executing Docker command with network=%s, timeout=%ds", network, timeout_sec)
+        logger.debug(
+            "Executing Docker command with network=%s, timeout=%ds",
+            network,
+            timeout_sec,
+        )
 
         try:
             stdout = stdout_path.open("w", encoding="utf-8", newline="\n")
@@ -89,7 +93,9 @@ class DockerSandbox:
                 raise
 
             except subprocess.TimeoutExpired:
-                logger.warning("Docker command timed out after %d seconds", timeout_sec)
+                logger.warning(
+                    "Docker command timed out after %d seconds", timeout_sec
+                )
                 with stderr_path.open("a") as stderr:
                     stderr.write(
                         f"Execution timed out after {timeout_sec} seconds"

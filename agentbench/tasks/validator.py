@@ -1,33 +1,37 @@
-from pathlib import Path
 import logging
-import ulid
 from datetime import datetime
+from pathlib import Path
 
-from agentbench.tasks.models import ValidationResult, TaskSpec
-from agentbench.util.paths import ensure_dir
-from agentbench.util.git import clone_repo, checkout_commit
-from agentbench.util.process import check_exit_code
+import ulid
+
 from agentbench.sandbox.docker_sandbox import DockerSandbox
-from agentbench.schemas.attempt_record import AttemptRecord, TimestampInfo, BaselineValidationResult, TaskResult
+from agentbench.schemas.attempt_record import (
+    AttemptRecord,
+    BaselineValidationResult,
+    TaskResult,
+    TimestampInfo,
+)
+from agentbench.tasks.models import TaskSpec, ValidationResult
+from agentbench.util.git import checkout_commit, clone_repo
 from agentbench.util.jsonl import append_jsonl
+from agentbench.util.paths import ensure_dir
+from agentbench.util.process import check_exit_code
 
 logger = logging.getLogger(__name__)
 
-def validate_baseline(task: TaskSpec, 
-                      workspace_dir: Path, 
-                      logs_dir: Path) -> ValidationResult:
+
+def validate_baseline(
+    task: TaskSpec, workspace_dir: Path, logs_dir: Path
+) -> ValidationResult:
     """
-    Function `validate_baseline(task: TaskSpec, workspace_dir: Path, logs_dir: Path) -> ValidationResult`:
-        - Create workspace directory structure
-        - Clone repo to `workspace/repo/`
-        - Checkout pinned commit
-        - Run setup commands with `network=bridge`
-        - Run the `run.command` (which should fail) with `network=none`
-        - If exit_code == 0: task is INVALID (baseline passed unexpectedly)
-        - If exit_code != 0: task is VALID (baseline fails as expected)
-        - If setup fails: task is INVALID (setup_failed)
-        - If timeout: task is INVALID (timeout)
-        - Return `ValidationResult`
+    Validate that a task's tests fail before any agent intervention.
+
+    - Clone repo and checkout pinned commit
+    - Run setup commands with `network=bridge`
+    - Run `run.command` with `network=none`
+    - exit_code == 0 -> INVALID (baseline passed unexpectedly)
+    - exit_code != 0 -> VALID (baseline fails as expected)
+    - Returns `ValidationResult`
     """
 
     """
@@ -50,10 +54,10 @@ def validate_baseline(task: TaskSpec,
         `failure_reason: str | None`
     """
 
-    repo_dir = ensure_dir(workspace_dir / 'repo')
+    repo_dir = ensure_dir(workspace_dir / "repo")
     valid = False
     error_details = None
-    started_at = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    started_at_dt = datetime.now()
     run_id = str(ulid.new())
     task_id = task.id
     suite = task.suite
@@ -64,38 +68,28 @@ def validate_baseline(task: TaskSpec,
 
     try:
         stdout_path, stderr_path, exit_code = clone_repo(
-            url = task.repo.url,
-            dest = repo_dir,
-            logs_dir = logs_dir
+            url=task.repo.url, dest=repo_dir, logs_dir=logs_dir
         )
 
-        error = check_exit_code(
-            cmd_name = 'git_clone',
-            exit_code = exit_code
-        )
+        error = check_exit_code(cmd_name="git_clone", exit_code=exit_code)
 
         if error is not None:
             error_details = "git_clone_failed"
             raise error
 
         stdout_path, stderr_path, exit_code = checkout_commit(
-            repo_dir = repo_dir,
-            commit = task.repo.commit,
-            logs_dir = logs_dir
+            repo_dir=repo_dir, commit=task.repo.commit, logs_dir=logs_dir
         )
 
-        error = check_exit_code(
-            cmd_name = 'git_checkout',
-            exit_code = exit_code
-        )
+        error = check_exit_code(cmd_name="git_checkout", exit_code=exit_code)
 
         if error is not None:
             error_details = "git_checkout_failed"
             raise error
 
         sandbox = DockerSandbox(
-            image = task.environment.docker_image,
-            workdir = task.environment.workdir,
+            image=task.environment.docker_image,
+            workdir=task.environment.workdir,
         )
 
         setup_commands = " && ".join(task.setup.commands)
@@ -106,12 +100,12 @@ def validate_baseline(task: TaskSpec,
         logger.debug("Setup commands: %s", setup_commands)
 
         setup_run_result = sandbox.run(
-            workspace_host_path = workspace_dir,
-            command = setup_commands,
-            network = "bridge",
-            timeout_sec = task.environment.timeout_sec,
-            stdout_path = Path(logs_dir, "setup_stdout.txt"),
-            stderr_path = Path(logs_dir, "setup_stderr.txt"),
+            workspace_host_path=workspace_dir,
+            command=setup_commands,
+            network="bridge",
+            timeout_sec=task.environment.timeout_sec,
+            stdout_path=Path(logs_dir, "setup_stdout.txt"),
+            stderr_path=Path(logs_dir, "setup_stderr.txt"),
         )
 
         exit_code = setup_run_result.exit_code
@@ -119,10 +113,9 @@ def validate_baseline(task: TaskSpec,
         stderr_path = setup_run_result.stderr_path
 
         error = check_exit_code(
-            cmd_name = "Setup run",
-            exit_code = setup_run_result.exit_code
+            cmd_name="Setup run", exit_code=setup_run_result.exit_code
         )
-        
+
         if error is not None:
             if setup_run_result.exit_code == 124:
                 error_details = "setup_timeout"
@@ -141,12 +134,12 @@ def validate_baseline(task: TaskSpec,
         attempted = True
 
         run_run_result = sandbox.run(
-            workspace_host_path = workspace_dir,
-            command = run_cmd,
-            network = "none",
-            timeout_sec = task.environment.timeout_sec,
-            stdout_path = Path(logs_dir, "run_stdout.txt"),
-            stderr_path = Path(logs_dir, "run_stderr.txt"),
+            workspace_host_path=workspace_dir,
+            command=run_cmd,
+            network="none",
+            timeout_sec=task.environment.timeout_sec,
+            stdout_path=Path(logs_dir, "run_stdout.txt"),
+            stderr_path=Path(logs_dir, "run_stderr.txt"),
         )
 
         exit_code = run_run_result.exit_code
@@ -171,14 +164,14 @@ def validate_baseline(task: TaskSpec,
                 error_details = "timeout"
             case _:
                 error_details = "unexpected_failure"
-    
+
     except Exception as e:
         logger.error("Validation failed: %s", str(e))
-    
+
     finally:
-        ended_at = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-        duration_sec = (ended_at - started_at).total_seconds()
-        
+        ended_at_dt = datetime.now()
+        duration_sec = (ended_at_dt - started_at_dt).total_seconds()
+
         artifacts = {}
         if stdout_path is not None:
             artifacts["stdout"] = str(stdout_path)
@@ -187,37 +180,34 @@ def validate_baseline(task: TaskSpec,
         artifacts["logs_dir"] = str(logs_dir)
 
         attempt_record = AttemptRecord(
-            run_id = run_id,
-            task_id = task_id,
-            suite = suite,
-            timestamps = TimestampInfo(
-                started_at = started_at,
-                ended_at = ended_at
+            run_id=run_id,
+            task_id=task_id,
+            suite=suite,
+            timestamps=TimestampInfo(
+                started_at=started_at_dt, ended_at=ended_at_dt
             ),
-            duration_sec = duration_sec,
-            baseline_validation = BaselineValidationResult(
-                attempted = attempted,
-                failure_as_expected = valid,
-                exit_code = exit_code if exit_code is not None else -1
+            duration_sec=duration_sec,
+            baseline_validation=BaselineValidationResult(
+                attempted=attempted,
+                failure_as_expected=valid,
+                exit_code=exit_code if exit_code is not None else -1,
             ),
-            result = TaskResult(
-                passed = valid,
-                exit_code = exit_code if exit_code is not None else -1,
-                failure_reason = error_details
+            result=TaskResult(
+                passed=valid,
+                exit_code=exit_code if exit_code is not None else -1,
+                failure_reason=error_details,
             ),
-            artifacts_path = artifacts
+            artifacts_path=artifacts,
         )
         attempts_file = logs_dir.parent / "attempts.jsonl"
-        append_jsonl(attempts_file, attempt_record.model_dump(mode='json'))
+        append_jsonl(attempts_file, attempt_record.model_dump(mode="json"))
 
     return ValidationResult(
-        task_id = task.id,
-        valid = valid,
-        exit_code = exit_code if exit_code is not None else -1,
-        stdout_path = stdout_path,
-        stderr_path = stderr_path,
-        error_reason = error_details,
-        duration_sec = duration_sec
+        task_id=task.id,
+        valid=valid,
+        exit_code=exit_code if exit_code is not None else -1,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        error_reason=error_details,
+        duration_sec=duration_sec,
     )
-
-

@@ -1,0 +1,20 @@
+id: toy_timeout
+suite: custom-dev
+
+repo:
+  url: examples/toy_repo
+  commit: 8b2d107781ccba9ae05308d60cde2e6fd074db8f
+
+environment:
+  docker_image: ghcr.io/agentbench/py-runner:0.1.0
+  workdir: /workspace
+  timeout_sec: 5
+
+setup:
+  commands:
+    - pip install --upgrade pip
+    - pip install . --target=/workspace/site-packages
+
+run:
+  command: sleep 60 && pytest -q
+

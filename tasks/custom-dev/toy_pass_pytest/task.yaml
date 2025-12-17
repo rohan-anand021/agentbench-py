@@ -1,0 +1,20 @@
+id: toy_pass_pytest
+suite: custom-dev
+
+repo:
+  url: examples/toy_repo
+  commit: e0b5530871c8d574e5ad96fa57bd895f36a3bdd0
+
+environment:
+  docker_image: ghcr.io/agentbench/py-runner:0.1.0
+  workdir: /workspace
+  timeout_sec: 300
+
+setup:
+  commands:
+    - pip install --upgrade pip
+    - pip install . --target=/workspace/site-packages
+
+run:
+  command: PYTHONPATH=/workspace/site-packages pytest -q
+

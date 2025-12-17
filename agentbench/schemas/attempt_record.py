@@ -1,21 +1,24 @@
-from argparse import BooleanOptionalAction
-from pydantic import BaseModel
 from datetime import datetime
+
+from pydantic import BaseModel
+
 
 class TimestampInfo(BaseModel):
     started_at: datetime
     ended_at: datetime
+
 
 class BaselineValidationResult(BaseModel):
     attempted: bool
     failure_as_expected: bool
     exit_code: int
 
+
 class TaskResult(BaseModel):
     passed: bool
     exit_code: int
     failure_reason: str | None
-    
+
 
 class AttemptRecord(BaseModel):
     """
@@ -45,4 +48,3 @@ class AttemptRecord(BaseModel):
     baseline_validation: BaselineValidationResult
     result: TaskResult
     artifacts_path: dict[str, str]
-

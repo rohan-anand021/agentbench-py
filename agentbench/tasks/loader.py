@@ -5,10 +5,11 @@ import yaml
 from pydantic import ValidationError
 
 from agentbench.tasks.exceptions import InvalidTaskError, SuiteNotFoundError
-from agentbench.tasks.validation import validate_task_yaml
 from agentbench.tasks.models import TaskSpec
+from agentbench.tasks.validation import validate_task_yaml
 
 logger = logging.getLogger(__name__)
+
 
 def load_task(task_yaml: Path) -> TaskSpec:
     """
@@ -23,15 +24,16 @@ def load_task(task_yaml: Path) -> TaskSpec:
 
     validate_task_yaml(task, task_yaml)
 
-    #validate task spec
+    # validate task spec
     try:
-        task_spec = TaskSpec(**task, source_path = task_yaml)
+        task_spec = TaskSpec(**task, source_path=task_yaml)
     except ValidationError as e:
         logger.error("Task spec validation failed for %s: %s", task_yaml, e)
         raise InvalidTaskError(task_yaml, e) from e
 
     logger.debug("Task loaded successfully: %s", task_spec.id)
     return task_spec
+
 
 def discover_tasks(suite_dir: Path) -> list[Path]:
     """
@@ -47,6 +49,7 @@ def discover_tasks(suite_dir: Path) -> list[Path]:
     logger.debug("Discovered %d tasks in %s", len(tasks), suite_dir)
     return tasks
 
+
 def load_suite(tasks_root: Path, suite_name: str) -> list[TaskSpec]:
     """
     Construct suite path: `tasks_root / suite_name`
@@ -59,27 +62,16 @@ def load_suite(tasks_root: Path, suite_name: str) -> list[TaskSpec]:
     suite_path = Path(tasks_root / suite_name)
     all_tasks = []
     tasks: list[Path] = discover_tasks(suite_path)
-    
+
     for task in tasks:
         try:
             loaded_task = load_task(task)
             all_tasks.append(loaded_task)
         except InvalidTaskError as e:
-            logger.warning('Invalid task %s: %s', task, e)
+            logger.warning("Invalid task %s: %s", task, e)
             continue
         except Exception as e:
-            logger.error('Error with task %s: %s', task, e)
+            logger.error("Error with task %s: %s", task, e)
             raise
-    
+
     return all_tasks
-            
-
-        
-        
-    
-    
-
-
-    
-
-    

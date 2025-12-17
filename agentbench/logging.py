@@ -39,4 +39,3 @@ def get_logger(name: str) -> logging.Logger:
         A configured logger instance.
     """
     return logging.getLogger(name)
-

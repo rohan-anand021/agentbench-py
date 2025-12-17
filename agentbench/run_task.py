@@ -6,23 +6,19 @@ from datetime import datetime
 from pathlib import Path
 
 import ulid
-import yaml
 
 from agentbench.sandbox.docker_sandbox import DockerSandbox
+from agentbench.tasks.loader import load_task
+from agentbench.util.git import checkout_commit, clone_repo
 from agentbench.util.paths import ensure_dir
 from agentbench.util.process import check_exit_code
-from agentbench.util.git import clone_repo, checkout_commit
-from agentbench.tasks.loader import load_task
 
 logger = logging.getLogger(__name__)
 
 
 def run_task(
-    task_yaml: Path,
-    out_dir: Path,
-    str_format: str = "%Y-%m-%d_%H-%M-%S"
+    task_yaml: Path, out_dir: Path, str_format: str = "%Y-%m-%d_%H-%M-%S"
 ) -> Path:
-
     """
     ### Integrate with Existing Code
     - [ ] Refactor `run_task.py` to use `TaskSpec` from loader:
@@ -60,9 +56,7 @@ def run_task(
     # clone the repo
     logger.info("Cloning repository from %s", task.repo.url)
     stdout_path, stderr_path, exit_code = clone_repo(
-        url=task.repo.url,
-        dest=repo_dir,
-        logs_dir=logs_dir
+        url=task.repo.url, dest=repo_dir, logs_dir=logs_dir
     )
 
     error = check_exit_code("git_clone", exit_code)
@@ -74,9 +68,7 @@ def run_task(
     # checkout the commit
     logger.info("Checking out commit %s", task.repo.commit)
     stdout_path, stderr_path, exit_code = checkout_commit(
-        repo_dir=repo_dir,
-        commit=task.repo.commit,
-        logs_dir=logs_dir
+        repo_dir=repo_dir, commit=task.repo.commit, logs_dir=logs_dir
     )
 
     error = check_exit_code("git_checkout", exit_code)
@@ -85,10 +77,13 @@ def run_task(
 
     logger.debug("Commit checked out successfully")
 
-    logger.info("Initializing Docker sandbox with image %s", task.environment.docker_image)
+    logger.info(
+        "Initializing Docker sandbox with image %s",
+        task.environment.docker_image,
+    )
     sandbox = DockerSandbox(
-        image = task.environment.docker_image,
-        workdir = task.environment.workdir,
+        image=task.environment.docker_image,
+        workdir=task.environment.workdir,
     )
 
     setup_commands = " && ".join(task.setup.commands)
@@ -107,7 +102,9 @@ def run_task(
     )
 
     if setup_run_result.exit_code != 0:
-        logger.error("Setup failed with exit code %d", setup_run_result.exit_code)
+        logger.error(
+            "Setup failed with exit code %d", setup_run_result.exit_code
+        )
         raise ValueError("Setup run failed, please try again")
 
     logger.debug("Setup completed successfully")

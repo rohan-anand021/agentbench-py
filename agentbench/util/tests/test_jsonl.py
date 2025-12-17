@@ -5,19 +5,18 @@ Day 3 Checkpoint Tests:
 - Schema validates correctly with Pydantic
 """
 
-import pytest
-from pathlib import Path
-from datetime import datetime
-import tempfile
 import json
+from datetime import datetime
 
-from agentbench.util.jsonl import append_jsonl, read_jsonl
+import pytest
+
 from agentbench.schemas.attempt_record import (
     AttemptRecord,
-    TimestampInfo,
     BaselineValidationResult,
     TaskResult,
+    TimestampInfo,
 )
+from agentbench.util.jsonl import append_jsonl, read_jsonl
 
 
 class TestAppendJsonl:
@@ -135,7 +134,9 @@ class TestReadJsonl:
         assert len(results) == 2
         assert [r["id"] for r in results] == [1, 2]
         # Check that a warning was logged
-        assert any("could not be read" in record.message for record in caplog.records)
+        assert any(
+            "could not be read" in record.message for record in caplog.records
+        )
 
     def test_read_returns_iterator(self, tmp_path):
         """read_jsonl should return an iterator, not a list."""
@@ -253,7 +254,7 @@ class TestAttemptRecordSchema:
         record = AttemptRecord(**data)
 
         # Serialize to JSON-compatible dict
-        json_data = record.model_dump(mode='json')
+        json_data = record.model_dump(mode="json")
 
         # Write to JSONL and read back
         jsonl_file = tmp_path / "attempts.jsonl"
@@ -268,7 +269,10 @@ class TestAttemptRecordSchema:
         assert restored.run_id == record.run_id
         assert restored.task_id == record.task_id
         assert restored.duration_sec == record.duration_sec
-        assert restored.baseline_validation.attempted == record.baseline_validation.attempted
+        assert (
+            restored.baseline_validation.attempted
+            == record.baseline_validation.attempted
+        )
         assert restored.result.passed == record.result.passed
 
     def test_failure_reason_can_be_none(self):
@@ -286,4 +290,3 @@ class TestAttemptRecordSchema:
 
         record = AttemptRecord(**data)
         assert record.result.failure_reason == "setup_failed"
-
