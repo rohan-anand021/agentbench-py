@@ -1,3 +1,19 @@
+"""
+Failure Taxonomy Module
+
+This module defines the FailureReason enum, which provides a deterministic
+taxonomy of all possible failure states in the evaluation harness.
+
+Key design decisions:
+- Success is represented by None, not by an enum value
+- Uses Python's StrEnum for automatic string serialization
+- All mapping logic is co-located as @classmethod methods on the enum
+- Timeout exit codes (124, 137) are checked BEFORE stage-specific logic
+
+See scoring/README.md for complete documentation of failure codes,
+precedence rules, and exit code mappings.
+"""
+
 from enum import StrEnum
 
 

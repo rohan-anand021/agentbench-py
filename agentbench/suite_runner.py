@@ -105,7 +105,9 @@ def run_suite(suite_name: str, tasks_root: Path, out_dir: Path) -> Path:
                     break
 
                 # create task-specific workspace subdirectory
-                task_workspace = ensure_dir(Path(run_dir / "workspace" / task.id))
+                task_workspace = ensure_dir(
+                    Path(run_dir / "workspace" / task.id)
+                )
 
                 try:
                     # run validate baseline

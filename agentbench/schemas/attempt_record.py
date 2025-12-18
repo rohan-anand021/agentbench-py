@@ -1,6 +1,27 @@
+"""
+AttemptRecord Schema Module
+
+This module defines the Pydantic models for attempt records, which capture
+the complete state of a task attempt including timing, validation results,
+and failure reasons.
+
+Schema Migration Notes:
+- v0.1.0: Initial schema (Week 3)
+- Future: When adding fields, increment MINOR version
+- Future: When breaking changes, increment MAJOR version
+- Readers should check schema_version and handle unknown versions gracefully
+
+Versioning Strategy:
+- schema_version uses semantic versioning: "MAJOR.MINOR.PATCH"
+- MAJOR: Breaking changes (fields removed, types changed)
+- MINOR: New fields added (backwards compatible)
+- PATCH: Documentation/clarification only
+"""
+
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
+
 from agentbench.scoring import FailureReason
 
 
@@ -24,16 +45,17 @@ class TaskResult(BaseModel):
     exit_code: int
     failure_reason: FailureReason | None
 
+
 class ModelConfig(BaseModel):
     """
-     ### Create ModelConfig Schema
-        - [ ] Add `ModelConfig` to `agentbench/schemas/attempt_record.py`:
-        - `provider: str | None` — e.g., "openrouter", "anthropic", None for scripted
-        - `name: str | None` — e.g., "anthropic/claude-3.5-sonnet", None for scripted
-        - `temperature: float | None` — sampling temperature
-        - `top_p: float | None` — nucleus sampling parameter
-        - `max_tokens: int | None` — max completion tokens
-        - `prompt_version: str | None` — hash of system prompt (e.g., "system_v1@sha256:abc123")
+    ### Create ModelConfig Schema
+       - [ ] Add `ModelConfig` to `agentbench/schemas/attempt_record.py`:
+       - `provider: str | None` — e.g., "openrouter", "anthropic", None for scripted
+       - `name: str | None` — e.g., "anthropic/claude-3.5-sonnet", None for scripted
+       - `temperature: float | None` — sampling temperature
+       - `top_p: float | None` — nucleus sampling parameter
+       - `max_tokens: int | None` — max completion tokens
+       - `prompt_version: str | None` — hash of system prompt (e.g., "system_v1@sha256:abc123")
     """
 
     provider: str | None

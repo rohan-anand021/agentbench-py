@@ -2,6 +2,7 @@ import json
 import logging
 import os
 import shutil
+import sys
 import tempfile
 from collections.abc import Iterator
 from pathlib import Path
@@ -11,37 +12,59 @@ from filelock import FileLock
 logger = logging.getLogger(__name__)
 
 
-def append_jsonl(path: Path, record: dict):
+def append_jsonl(path: Path, record: dict) -> bool:
     """
-    - Function `append_jsonl(path: Path, record: dict) -> None`:
-        - Open file in append mode
-        - Write JSON + newline
-        - Use atomic write pattern (write to temp, rename)
-        - Handle file locking for concurrent writes (optional, can use `filelock` library)
+    Append a record to a JSONL file atomically.
+
+    - Open file in append mode
+    - Write JSON + newline
+    - Use atomic write pattern (write to temp, rename)
+    - Handle file locking for concurrent writes
+
+    Returns:
+        True if write succeeded, False if write failed (e.g., disk full).
     """
 
     path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = None
 
-    lock = FileLock(str(path) + ".lock")
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
 
-    with lock:
-        json_line = json.dumps(record) + "\n"
+        lock = FileLock(str(path) + ".lock")
 
-        with tempfile.NamedTemporaryFile(
-            mode="wb", delete=False, dir=path.parent
-        ) as tmp:
-            tmp_path = Path(tmp.name)
+        with lock:
+            json_line = json.dumps(record) + "\n"
 
-            if path.exists():
-                with path.open("rb") as src:
-                    shutil.copyfileobj(src, tmp)
+            with tempfile.NamedTemporaryFile(
+                mode="wb", delete=False, dir=path.parent
+            ) as tmp:
+                tmp_path = Path(tmp.name)
 
-            tmp.write(json_line.encode("utf-8"))
-            tmp.flush()
-            os.fsync(tmp.fileno())
+                if path.exists():
+                    with path.open("rb") as src:
+                        shutil.copyfileobj(src, tmp)
 
-        os.replace(tmp_path, path)
+                tmp.write(json_line.encode("utf-8"))
+                tmp.flush()
+                os.fsync(tmp.fileno())
+
+            os.replace(tmp_path, path)
+
+        return True
+
+    except OSError as e:
+        print(f"CRITICAL: Failed to write to {path}: {e}", file=sys.stderr)
+        logger.critical("Failed to write JSONL record to %s: %s", path, e)
+
+        # Clean up temp file if it exists
+        if tmp_path is not None and tmp_path.exists():
+            try:
+                tmp_path.unlink()
+            except OSError:
+                pass
+
+        return False
 
 
 def read_jsonl(path: Path) -> Iterator[dict]:

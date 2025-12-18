@@ -14,11 +14,16 @@ class TestFromPytestExitCode:
 
     def test_exit_code_1_returns_tests_failed(self):
         """Exit code 1 should return TESTS_FAILED."""
-        assert FailureReason.from_pytest_exit_code(1) == FailureReason.TESTS_FAILED
+        assert (
+            FailureReason.from_pytest_exit_code(1) == FailureReason.TESTS_FAILED
+        )
 
     def test_exit_code_5_returns_no_tests_collected(self):
         """Exit code 5 should return NO_TESTS_COLLECTED."""
-        assert FailureReason.from_pytest_exit_code(5) == FailureReason.NO_TESTS_COLLECTED
+        assert (
+            FailureReason.from_pytest_exit_code(5)
+            == FailureReason.NO_TESTS_COLLECTED
+        )
 
     def test_exit_code_124_returns_timeout(self):
         """Exit code 124 (GNU timeout) should return TIMEOUT."""
@@ -30,15 +35,23 @@ class TestFromPytestExitCode:
 
     def test_exit_code_2_returns_interrupted(self):
         """Exit code 2 should return INTERRUPTED."""
-        assert FailureReason.from_pytest_exit_code(2) == FailureReason.INTERRUPTED
+        assert (
+            FailureReason.from_pytest_exit_code(2) == FailureReason.INTERRUPTED
+        )
 
     def test_exit_code_3_returns_internal_error(self):
         """Exit code 3 should return INTERNAL_ERROR."""
-        assert FailureReason.from_pytest_exit_code(3) == FailureReason.INTERNAL_ERROR
+        assert (
+            FailureReason.from_pytest_exit_code(3)
+            == FailureReason.INTERNAL_ERROR
+        )
 
     def test_exit_code_4_returns_internal_error(self):
         """Exit code 4 should return INTERNAL_ERROR."""
-        assert FailureReason.from_pytest_exit_code(4) == FailureReason.INTERNAL_ERROR
+        assert (
+            FailureReason.from_pytest_exit_code(4)
+            == FailureReason.INTERNAL_ERROR
+        )
 
     def test_unknown_exit_code_returns_unknown(self):
         """Unknown exit codes should return UNKNOWN."""
@@ -50,7 +63,10 @@ class TestFromStage:
 
     def test_setup_non_zero_returns_setup_failed(self):
         """Setup stage with non-zero exit code should return SETUP_FAILED."""
-        assert FailureReason.from_stage("setup", 1, None) == FailureReason.SETUP_FAILED
+        assert (
+            FailureReason.from_stage("setup", 1, None)
+            == FailureReason.SETUP_FAILED
+        )
 
     def test_setup_timeout_returns_setup_timeout(self):
         """Setup stage with exit code 124 should return SETUP_TIMEOUT."""
@@ -59,7 +75,10 @@ class TestFromStage:
 
     def test_baseline_run_exit_0_returns_baseline_not_failing(self):
         """Baseline run with exit code 0 should return BASELINE_NOT_FAILING."""
-        assert FailureReason.from_stage("baseline_run", 0, None) == FailureReason.BASELINE_NOT_FAILING
+        assert (
+            FailureReason.from_stage("baseline_run", 0, None)
+            == FailureReason.BASELINE_NOT_FAILING
+        )
 
     def test_baseline_run_exit_1_returns_none(self):
         """Baseline run with exit code 1 (tests failing) should return None (valid baseline)."""
@@ -67,7 +86,10 @@ class TestFromStage:
 
     def test_git_clone_non_zero_returns_git_clone_failed(self):
         """Git clone with non-zero exit code should return GIT_CLONE_FAILED."""
-        assert FailureReason.from_stage("git_clone", 128, None) == FailureReason.GIT_CLONE_FAILED
+        assert (
+            FailureReason.from_stage("git_clone", 128, None)
+            == FailureReason.GIT_CLONE_FAILED
+        )
 
     def test_git_clone_timeout_returns_timeout(self):
         """Git clone with exit code 124 should return TIMEOUT (timeout takes precedence)."""
@@ -76,7 +98,10 @@ class TestFromStage:
 
     def test_git_checkout_non_zero_returns_git_checkout_failed(self):
         """Git checkout with non-zero exit code should return GIT_CHECKOUT_FAILED."""
-        assert FailureReason.from_stage("git_checkout", 1, None) == FailureReason.GIT_CHECKOUT_FAILED
+        assert (
+            FailureReason.from_stage("git_checkout", 1, None)
+            == FailureReason.GIT_CHECKOUT_FAILED
+        )
 
     def test_setup_success_returns_none(self):
         """Setup with exit code 0 should return None."""
@@ -88,11 +113,17 @@ class TestFromStage:
 
     def test_keyboard_interrupt_exception_returns_interrupted(self):
         """KeyboardInterrupt exception should return INTERRUPTED."""
-        assert FailureReason.from_stage("setup", 0, KeyboardInterrupt()) == FailureReason.INTERRUPTED
+        assert (
+            FailureReason.from_stage("setup", 0, KeyboardInterrupt())
+            == FailureReason.INTERRUPTED
+        )
 
     def test_other_exception_returns_unknown(self):
         """Other exceptions should return UNKNOWN."""
-        assert FailureReason.from_stage("setup", 0, ValueError("test")) == FailureReason.UNKNOWN
+        assert (
+            FailureReason.from_stage("setup", 0, ValueError("test"))
+            == FailureReason.UNKNOWN
+        )
 
     def test_unknown_stage_raises_value_error(self):
         """Unknown stage should raise ValueError."""
@@ -102,12 +133,18 @@ class TestFromStage:
     def test_agent_run_delegates_to_pytest_exit_code(self):
         """Agent run stage should delegate to from_pytest_exit_code."""
         assert FailureReason.from_stage("agent_run", 0, None) is None
-        assert FailureReason.from_stage("agent_run", 1, None) == FailureReason.TESTS_FAILED
+        assert (
+            FailureReason.from_stage("agent_run", 1, None)
+            == FailureReason.TESTS_FAILED
+        )
 
     def test_final_test_delegates_to_pytest_exit_code(self):
         """Final test stage should delegate to from_pytest_exit_code."""
         assert FailureReason.from_stage("final_test", 0, None) is None
-        assert FailureReason.from_stage("final_test", 1, None) == FailureReason.TESTS_FAILED
+        assert (
+            FailureReason.from_stage("final_test", 1, None)
+            == FailureReason.TESTS_FAILED
+        )
 
 
 class TestPrecedence:
@@ -124,12 +161,21 @@ class TestPrecedence:
         assert FailureReason.GIT_CLONE_FAILED.precedence == 1
         for reason in FailureReason:
             if reason != FailureReason.GIT_CLONE_FAILED:
-                assert FailureReason.GIT_CLONE_FAILED.precedence < reason.precedence
+                assert (
+                    FailureReason.GIT_CLONE_FAILED.precedence
+                    < reason.precedence
+                )
 
     def test_setup_failures_precede_runtime_failures(self):
         """Setup failures should have higher precedence than runtime failures."""
-        assert FailureReason.SETUP_FAILED.precedence < FailureReason.TESTS_FAILED.precedence
-        assert FailureReason.SETUP_TIMEOUT.precedence < FailureReason.TIMEOUT.precedence
+        assert (
+            FailureReason.SETUP_FAILED.precedence
+            < FailureReason.TESTS_FAILED.precedence
+        )
+        assert (
+            FailureReason.SETUP_TIMEOUT.precedence
+            < FailureReason.TIMEOUT.precedence
+        )
 
     def test_precedence_follows_documented_order(self):
         """Precedence should follow the documented order in the docstring."""
@@ -151,7 +197,9 @@ class TestPrecedence:
             FailureReason.UNKNOWN,
         ]
         for i in range(len(expected_order) - 1):
-            assert expected_order[i].precedence < expected_order[i + 1].precedence, (
+            assert (
+                expected_order[i].precedence < expected_order[i + 1].precedence
+            ), (
                 f"{expected_order[i]} should have higher precedence than {expected_order[i + 1]}"
             )
 

@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, field_serializer
+
 from agentbench.scoring import FailureReason
 
 
@@ -67,8 +68,8 @@ class ValidationResult(BaseModel):
     task_id: str
     valid: bool
     exit_code: int
-    stdout_path: Path
-    stderr_path: Path
+    stdout_path: Path | None
+    stderr_path: Path | None
     error_reason: FailureReason | None
     duration_sec: float
 

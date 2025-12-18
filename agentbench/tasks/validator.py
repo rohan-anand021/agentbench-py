@@ -1,23 +1,12 @@
 import logging
-from datetime import datetime
 from pathlib import Path
 
-import ulid
-
 from agentbench.sandbox.docker_sandbox import DockerSandbox
-from agentbench.schemas.attempt_record import (
-    AttemptRecord,
-    BaselineValidationResult,
-    TaskResult,
-    TimestampInfo,
-)
 from agentbench.scoring import FailureReason
 from agentbench.tasks.models import TaskSpec, ValidationResult
+from agentbench.util.attempt import AttemptContext
 from agentbench.util.git import checkout_commit, clone_repo
-from agentbench.util.jsonl import append_jsonl
 from agentbench.util.paths import ensure_dir
-from agentbench.util.process import check_exit_code
-from agentbench.schemas.attempt_record import LimitsConfig
 
 logger = logging.getLogger(__name__)
 
@@ -57,152 +46,146 @@ def validate_baseline(
     """
 
     repo_dir = ensure_dir(workspace_dir / "repo")
-    valid = False
-    error_details = None
-    started_at_dt = datetime.now()
-    run_id = str(ulid.new())
-    task_id = task.id
-    suite = task.suite
-    exit_code = None
     stdout_path = None
     stderr_path = None
-    attempted = False
 
-    try:
-        stdout_path, stderr_path, exit_code = clone_repo(
-            url=task.repo.url, dest=repo_dir, logs_dir=logs_dir
-        )
+    with AttemptContext(
+        task=task, logs_dir=logs_dir, variant="baseline"
+    ) as attempt:
+        try:
+            # git clone
+            attempt.mark_stage(stage="git_clone")
 
-        error = check_exit_code(cmd_name="git_clone", exit_code=exit_code)
+            stdout_path, stderr_path, exit_code = clone_repo(
+                url=task.repo.url, dest=repo_dir, logs_dir=logs_dir
+            )
 
-        if error is not None:
-            error_details = FailureReason.GIT_CLONE_FAILED
-            raise error
+            attempt.set_exit_code(exit_code)
+            attempt.add_artifact("clone_stdout", str(stdout_path))
+            attempt.add_artifact("clone_stderr", str(stderr_path))
 
-        stdout_path, stderr_path, exit_code = checkout_commit(
-            repo_dir=repo_dir, commit=task.repo.commit, logs_dir=logs_dir
-        )
+            if exit_code != 0:
+                attempt.set_failure_reason(
+                    reason=FailureReason.GIT_CLONE_FAILED
+                )
+                raise RuntimeError(
+                    f"git clone failed with exit code: {exit_code}"
+                )
 
-        error = check_exit_code(cmd_name="git_checkout", exit_code=exit_code)
+            # git checkout
+            attempt.mark_stage(stage="git_checkout")
 
-        if error is not None:
-            error_details = FailureReason.GIT_CHECKOUT_FAILED
-            raise error
+            stdout_path, stderr_path, exit_code = checkout_commit(
+                repo_dir=repo_dir, commit=task.repo.commit, logs_dir=logs_dir
+            )
 
-        sandbox = DockerSandbox(
-            image=task.environment.docker_image,
-            workdir=task.environment.workdir,
-        )
+            attempt.set_exit_code(exit_code)
+            attempt.add_artifact("checkout_stdout", str(stdout_path))
+            attempt.add_artifact("checkout_stderr", str(stderr_path))
 
-        setup_commands = " && ".join(task.setup.commands)
-        repo_relative_path = "repo"
-        setup_commands = f"cd {repo_relative_path} && {setup_commands}"
+            if exit_code != 0:
+                attempt.set_failure_reason(
+                    reason=FailureReason.GIT_CHECKOUT_FAILED
+                )
+                raise RuntimeError(
+                    f"git checkout failed with exit code: {exit_code}"
+                )
 
-        logger.info("Running setup commands")
-        logger.debug("Setup commands: %s", setup_commands)
+            sandbox = DockerSandbox(
+                image=task.environment.docker_image,
+                workdir=task.environment.workdir,
+            )
 
-        setup_run_result = sandbox.run(
-            workspace_host_path=workspace_dir,
-            command=setup_commands,
-            network="bridge",
-            timeout_sec=task.environment.timeout_sec,
-            stdout_path=Path(logs_dir, "setup_stdout.txt"),
-            stderr_path=Path(logs_dir, "setup_stderr.txt"),
-        )
+            setup_commands = " && ".join(task.setup.commands)
+            repo_relative_path = "repo"
+            setup_commands = f"cd {repo_relative_path} && {setup_commands}"
 
-        exit_code = setup_run_result.exit_code
-        stdout_path = setup_run_result.stdout_path
-        stderr_path = setup_run_result.stderr_path
+            logger.info("Running setup commands")
+            logger.debug("Setup commands: %s", setup_commands)
 
-        error = check_exit_code(
-            cmd_name="Setup run", exit_code=setup_run_result.exit_code
-        )
+            # setup run
+            attempt.mark_stage(stage="setup_run")
 
-        if error is not None:
-            if setup_run_result.exit_code == 124:
-                error_details = FailureReason.SETUP_TIMEOUT
-            else:
-                error_details = FailureReason.SETUP_FAILED
-            raise error
-
-        logger.debug("Setup completed successfully")
-
-        run_cmd = task.run.command
-        run_cmd = f"cd repo && {run_cmd}"
-
-        logger.info("Running task command")
-        logger.debug("Run command: %s", run_cmd)
-
-        attempted = True
-
-        run_run_result = sandbox.run(
-            workspace_host_path=workspace_dir,
-            command=run_cmd,
-            network="none",
-            timeout_sec=task.environment.timeout_sec,
-            stdout_path=Path(logs_dir, "run_stdout.txt"),
-            stderr_path=Path(logs_dir, "run_stderr.txt"),
-        )
-
-        exit_code = run_run_result.exit_code
-        stdout_path = run_run_result.stdout_path
-        stderr_path = run_run_result.stderr_path
-
-        error_details = FailureReason.from_stage(
-            "baseline_run", exit_code, None
-        )
-        valid = (exit_code != 0 and error_details is None)
-
-    except Exception as e:
-        logger.error("Validation failed: %s", str(e))
-
-    finally:
-        ended_at_dt = datetime.now()
-        duration_sec = (ended_at_dt - started_at_dt).total_seconds()
-
-        artifacts = {}
-        if stdout_path is not None:
-            artifacts["stdout"] = str(stdout_path)
-        if stderr_path is not None:
-            artifacts["stderr"] = str(stderr_path)
-        artifacts["logs_dir"] = str(logs_dir)
-
-        attempt_record = AttemptRecord(
-            run_id=run_id,
-            task_id=task_id,
-            suite=suite,
-            timestamps=TimestampInfo(
-                started_at=started_at_dt, ended_at=ended_at_dt
-            ),
-            duration_sec=duration_sec,
-            baseline_validation=BaselineValidationResult(
-                attempted=attempted,
-                failure_as_expected=valid,
-                exit_code=exit_code if exit_code is not None else -1,
-            ),
-            result=TaskResult(
-                passed=valid,
-                exit_code=exit_code if exit_code is not None else -1,
-                failure_reason=error_details,
-            ),
-            artifact_paths=artifacts,
-            variant="baseline",
-            model=None,
-            limits=LimitsConfig(
+            setup_run_result = sandbox.run(
+                workspace_host_path=workspace_dir,
+                command=setup_commands,
+                network="bridge",
                 timeout_sec=task.environment.timeout_sec,
-                tool_timeout_sec=None
-            ),
-            schema_version="0.1.0"
-        )
-        attempts_file = logs_dir.parent / "attempts.jsonl"
-        append_jsonl(attempts_file, attempt_record.model_dump(mode="json"))
+                stdout_path=Path(logs_dir, "setup_stdout.txt"),
+                stderr_path=Path(logs_dir, "setup_stderr.txt"),
+            )
+
+            exit_code = setup_run_result.exit_code
+            stdout_path = setup_run_result.stdout_path
+            stderr_path = setup_run_result.stderr_path
+
+            attempt.set_exit_code(exit_code)
+            attempt.add_artifact("setup_stdout", str(stdout_path))
+            attempt.add_artifact("setup_stderr", str(stderr_path))
+
+            if exit_code != 0:
+                if exit_code == 124:
+                    attempt.set_failure_reason(
+                        reason=FailureReason.SETUP_TIMEOUT
+                    )
+                else:
+                    attempt.set_failure_reason(
+                        reason=FailureReason.SETUP_FAILED
+                    )
+                raise RuntimeError(
+                    f"setup run failed with exit code: {exit_code}"
+                )
+
+            logger.debug("Setup completed successfully")
+
+            run_cmd = task.run.command
+            run_cmd = f"cd repo && {run_cmd}"
+
+            logger.info("Running task command")
+            logger.debug("Run command: %s", run_cmd)
+
+            # run
+            attempt.mark_stage(stage="run")
+
+            run_run_result = sandbox.run(
+                workspace_host_path=workspace_dir,
+                command=run_cmd,
+                network="none",
+                timeout_sec=task.environment.timeout_sec,
+                stdout_path=Path(logs_dir, "run_stdout.txt"),
+                stderr_path=Path(logs_dir, "run_stderr.txt"),
+            )
+
+            exit_code = run_run_result.exit_code
+            stdout_path = run_run_result.stdout_path
+            stderr_path = run_run_result.stderr_path
+
+            attempt.set_exit_code(exit_code)
+            attempt.add_artifact("run_stdout", str(stdout_path))
+            attempt.add_artifact("run_stderr", str(stderr_path))
+
+            if exit_code == 0:
+                attempt.set_failure_reason(
+                    reason=FailureReason.BASELINE_NOT_FAILING
+                )
+                raise RuntimeError(
+                    "baseline validation failed: tests passed unexpectedly"
+                )
+            elif exit_code in (124, 137):
+                attempt.set_failure_reason(reason=FailureReason.TIMEOUT)
+                raise RuntimeError(f"Run timed out with exit code: {exit_code}")
+            else:
+                attempt.valid = True
+
+        except Exception as e:
+            logger.error("Validation failed: %s", str(e))
 
     return ValidationResult(
         task_id=task.id,
-        valid=valid,
-        exit_code=exit_code if exit_code is not None else -1,
+        valid=attempt.valid,
+        exit_code=attempt.exit_code if attempt.exit_code is not None else -1,
         stdout_path=stdout_path,
         stderr_path=stderr_path,
-        error_reason=error_details,
-        duration_sec=duration_sec,
+        error_reason=attempt.failure_reason,
+        duration_sec=attempt.duration if attempt.duration is not None else 0.0,
     )

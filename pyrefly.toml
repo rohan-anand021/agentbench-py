@@ -1,0 +1,30 @@
+# Pyrefly configuration for agentbench-py
+
+# Check all Python files in the project
+project-includes = ["agentbench/**/*.py", "tests/**/*.py"]
+
+# Exclude common non-code directories
+project-excludes = ["**/__pycache__", "**/.venv/**", "**/venv/**", "**/node_modules"]
+
+# Use .gitignore patterns automatically
+use-ignore-files = true
+
+# Import resolution
+search-path = ["."]
+
+# Python environment
+python-version = "3.11"
+python-platform = "darwin"
+
+# Type checking settings
+# Infer return types for untyped functions
+untyped-def-behavior = "check-and-infer-return-type"
+
+# Don't error on missing stubs for third-party libs
+ignore-missing-imports = []
+
+# Allow standard ignore comments
+permissive-ignores = true
+
+# All errors enabled by default
+[errors]

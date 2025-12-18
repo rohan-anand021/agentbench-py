@@ -1,4 +1,4 @@
-from datetime import datetime, timezone
+from datetime import UTC, datetime, timezone
 
 import pytest
 from pydantic import ValidationError
@@ -20,8 +20,8 @@ def make_valid_attempt_record(**overrides) -> AttemptRecord:
         "task_id": "test-task-id",
         "suite": "test-suite",
         "timestamps": TimestampInfo(
-            started_at=datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
-            ended_at=datetime(2025, 1, 1, 10, 5, 0, tzinfo=timezone.utc),
+            started_at=datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC),
+            ended_at=datetime(2025, 1, 1, 10, 5, 0, tzinfo=UTC),
         ),
         "duration_sec": 300.0,
         "baseline_validation": BaselineValidationResult(
@@ -70,14 +70,16 @@ class TestAttemptRecordMissingFields:
                 task_id="test-task-id",
                 suite="test-suite",
                 timestamps=TimestampInfo(
-                    started_at=datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
-                    ended_at=datetime(2025, 1, 1, 10, 5, 0, tzinfo=timezone.utc),
+                    started_at=datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC),
+                    ended_at=datetime(2025, 1, 1, 10, 5, 0, tzinfo=UTC),
                 ),
                 duration_sec=300.0,
                 baseline_validation=BaselineValidationResult(
                     attempted=True, failure_as_expected=True, exit_code=1
                 ),
-                result=TaskResult(passed=True, exit_code=0, failure_reason=None),
+                result=TaskResult(
+                    passed=True, exit_code=0, failure_reason=None
+                ),
                 artifact_paths={},
                 variant="baseline",
                 model=None,
@@ -95,14 +97,16 @@ class TestAttemptRecordMissingFields:
                 task_id="test-task-id",
                 suite="test-suite",
                 timestamps=TimestampInfo(
-                    started_at=datetime(2025, 1, 1, 10, 0, 0, tzinfo=timezone.utc),
-                    ended_at=datetime(2025, 1, 1, 10, 5, 0, tzinfo=timezone.utc),
+                    started_at=datetime(2025, 1, 1, 10, 0, 0, tzinfo=UTC),
+                    ended_at=datetime(2025, 1, 1, 10, 5, 0, tzinfo=UTC),
                 ),
                 duration_sec=300.0,
                 baseline_validation=BaselineValidationResult(
                     attempted=True, failure_as_expected=True, exit_code=1
                 ),
-                result=TaskResult(passed=True, exit_code=0, failure_reason=None),
+                result=TaskResult(
+                    passed=True, exit_code=0, failure_reason=None
+                ),
                 artifact_paths={},
                 variant="baseline",
                 model=None,
@@ -229,4 +233,3 @@ class TestTimestampSerialization:
         # Should contain timezone offset
         assert "-05:00" in started_at
         assert "-05:00" in ended_at
-
