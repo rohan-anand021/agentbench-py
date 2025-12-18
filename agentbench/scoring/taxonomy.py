@@ -111,6 +111,7 @@ class FailureReason(StrEnum):
                 return cls.INTERRUPTED
             return cls.UNKNOWN
 
+        if exit_code in (124, 137):
             if stage == "setup":
                 return cls.SETUP_TIMEOUT
             return cls.TIMEOUT

@@ -1,6 +1,7 @@
 from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
+from agentbench.scoring import FailureReason
 
 
 class TimestampInfo(BaseModel):
@@ -21,7 +22,7 @@ class BaselineValidationResult(BaseModel):
 class TaskResult(BaseModel):
     passed: bool
     exit_code: int
-    failure_reason: str | None
+    failure_reason: FailureReason | None
 
 class ModelConfig(BaseModel):
     """

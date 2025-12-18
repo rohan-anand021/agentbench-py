@@ -11,11 +11,13 @@ from agentbench.schemas.attempt_record import (
     TaskResult,
     TimestampInfo,
 )
+from agentbench.scoring import FailureReason
 from agentbench.tasks.models import TaskSpec, ValidationResult
 from agentbench.util.git import checkout_commit, clone_repo
 from agentbench.util.jsonl import append_jsonl
 from agentbench.util.paths import ensure_dir
 from agentbench.util.process import check_exit_code
+from agentbench.schemas.attempt_record import LimitsConfig
 
 logger = logging.getLogger(__name__)
 
@@ -74,7 +76,7 @@ def validate_baseline(
         error = check_exit_code(cmd_name="git_clone", exit_code=exit_code)
 
         if error is not None:
-            error_details = "git_clone_failed"
+            error_details = FailureReason.GIT_CLONE_FAILED
             raise error
 
         stdout_path, stderr_path, exit_code = checkout_commit(
@@ -84,7 +86,7 @@ def validate_baseline(
         error = check_exit_code(cmd_name="git_checkout", exit_code=exit_code)
 
         if error is not None:
-            error_details = "git_checkout_failed"
+            error_details = FailureReason.GIT_CHECKOUT_FAILED
             raise error
 
         sandbox = DockerSandbox(
@@ -118,9 +120,9 @@ def validate_baseline(
 
         if error is not None:
             if setup_run_result.exit_code == 124:
-                error_details = "setup_timeout"
+                error_details = FailureReason.SETUP_TIMEOUT
             else:
-                error_details = "setup_failed"
+                error_details = FailureReason.SETUP_FAILED
             raise error
 
         logger.debug("Setup completed successfully")
@@ -146,24 +148,10 @@ def validate_baseline(
         stdout_path = run_run_result.stdout_path
         stderr_path = run_run_result.stderr_path
 
-        match exit_code:
-            case 0:
-                error_details = "baseline_passed"
-            case 1:
-                valid = True
-                error_details = None
-            case 2:
-                error_details = "execution_interruption_or_user_error"
-            case 3:
-                error_details = "internal_error"
-            case 4:
-                error_details = "cmd_line_error"
-            case 5:
-                error_details = "no_tests_collected"
-            case 124:
-                error_details = "timeout"
-            case _:
-                error_details = "unexpected_failure"
+        error_details = FailureReason.from_stage(
+            "baseline_run", exit_code, None
+        )
+        valid = (exit_code != 0 and error_details is None)
 
     except Exception as e:
         logger.error("Validation failed: %s", str(e))
@@ -198,6 +186,13 @@ def validate_baseline(
                 failure_reason=error_details,
             ),
             artifact_paths=artifacts,
+            variant="baseline",
+            model=None,
+            limits=LimitsConfig(
+                timeout_sec=task.environment.timeout_sec,
+                tool_timeout_sec=None
+            ),
+            schema_version="0.1.0"
         )
         attempts_file = logs_dir.parent / "attempts.jsonl"
         append_jsonl(attempts_file, attempt_record.model_dump(mode="json"))

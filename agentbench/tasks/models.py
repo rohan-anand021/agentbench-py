@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from pydantic import BaseModel, ConfigDict, field_serializer
+from agentbench.scoring import FailureReason
 
 
 class RepoSpec(BaseModel):
@@ -68,7 +69,7 @@ class ValidationResult(BaseModel):
     exit_code: int
     stdout_path: Path
     stderr_path: Path
-    error_reason: str | None
+    error_reason: FailureReason | None
     duration_sec: float
 
     @field_serializer("stdout_path", "stderr_path")
