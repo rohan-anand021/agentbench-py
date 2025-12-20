@@ -48,4 +48,4 @@ plan/
 .env.local
 
 # Dependency lock (if preferred)
-uv.lock
+uv.lockplan/
