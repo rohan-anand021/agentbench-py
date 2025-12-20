@@ -49,3 +49,4 @@ plan/
 
 # Dependency lock (if preferred)
 uv.lockplan/
+pyrefly.toml
