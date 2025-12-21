@@ -41,6 +41,7 @@ Thumbs.db
 artifacts/
 temp_dir_whp/
 private/
+plan/
 
 # Backup files
 *.backup
