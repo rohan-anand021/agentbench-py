@@ -54,5 +54,5 @@ pyproject.toml.backup
 # Linting cache
 .ruff_cache/
 
-# Tool configs (can commit if desired)
-# pyrefly.toml
+# Tool configs
+pyrefly.toml
