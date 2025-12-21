@@ -41,12 +41,17 @@ Thumbs.db
 artifacts/
 temp_dir_whp/
 private/
-plan/
+
+# Backup files
+*.backup
+pyproject.toml.backup
 
 # Environment
 .env
 .env.local
 
-# Dependency lock (if preferred)
-uv.lockplan/
-pyrefly.toml
+# Linting cache
+.ruff_cache/
+
+# Tool configs (can commit if desired)
+# pyrefly.toml
