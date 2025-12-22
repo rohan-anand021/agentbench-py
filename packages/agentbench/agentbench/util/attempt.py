@@ -1,6 +1,4 @@
 """
-Attempt Lifecycle Module
-
 This module provides the AttemptContext context manager for crash-safe
 attempt record writing. It guarantees that an AttemptRecord is written
 to disk even if:
