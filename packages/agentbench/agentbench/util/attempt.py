@@ -61,7 +61,7 @@ class AttemptContext:
         - Captures `started_at` on `__enter__`
         - Captures `ended_at` on `__exit__`
         - Always writes AttemptRecord to JSONL on `__exit__`
-        - If exception occurred, maps it to `FailureReason.UNKNOWN` (or more specific if detectable)
+        - If exception occurred, maps it to `FailureReason.UNKNOWN`
         - Records which stage was in progress when failure occurred
     """
 
