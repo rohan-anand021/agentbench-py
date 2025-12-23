@@ -6,14 +6,17 @@ repo:
   commit: 8b2d107781ccba9ae05308d60cde2e6fd074db8f
 
 environment:
-  docker_image: ghcr.io/agentbench/py-runner:0.1.0
+  docker_image: python:3.11-slim
   workdir: /workspace
-  timeout_sec: 300
+  timeout_sec: 60
 
 setup:
   commands:
-    - pip install --upgrade pip
-    - pip install . --target=/workspace/site-packages
+    - pip install pytest
 
 run:
-  command: PYTHONPATH=/workspace/site-packages pytest -q
+  command: pytest -q
+
+agent:
+  entrypoint: scripted
+  max_steps: 10

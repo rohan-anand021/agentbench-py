@@ -1,14 +1,21 @@
-from agentbench.tools.builtins import read_file
-from agentbench.tools.contract import ReadFileParams
-from agentbench.tools.contract import ListFilesParams
-from agentbench.tools.contract import ToolRequest, ToolName
-from pathib import Path
-from agentbench.tasks.models import TaskSpec
+from pathlib import Path
 
-from agentbench.agents.base import AgentResult
-from agentbench.agents.events import EventLogger
-from agentbench.agents.base import Agent
-from agentbench.tools.builtins import list_files
+from agentbench.agents.base import Agent, AgentResult
+from agentbench.sandbox.docker_sandbox import DockerSandbox
+from agentbench.tasks.models import TaskSpec
+from agentbench.tools.builtins import list_files, read_file, search, run_tool
+from agentbench.tools.contract import (
+    ApplyPatchParams,
+    ListFilesParams,
+    ReadFileParams,
+    RunParams,
+    SearchParams,
+    ToolName,
+    ToolRequest,
+    ToolStatus,
+)
+from agentbench.tools.patching import apply_patch
+from agentbench.util.events import EventLogger
 
 
 class ScriptedAgent(Agent):
@@ -31,18 +38,24 @@ class ScriptedAgent(Agent):
     | 5 | `run` | `command="pytest -q"` | Verify fix works |
     """
 
+    def __init__(self, run_id: str):
+        self.run_id = run_id
+
     def run(
         self,
-        task: TaskSpec,
+        _task: TaskSpec,  # Unused in scripted agent - uses hard-coded sequence
+        sandbox: DockerSandbox,
         workspace_root: Path,
         artifacts_dir: Path,
-        failing_output: str,
+        _failing_output: str,  # Unused in scripted agent - uses hard-coded patch
     ) -> AgentResult:
+        
         logger = EventLogger(
             run_id = self.run_id,
             events_file = artifacts_dir / "events.jsonl"
         )
 
+        #step 1: list files
         logger.log_agent_turn_started()
 
         step_1_request = ToolRequest(
@@ -68,6 +81,7 @@ class ScriptedAgent(Agent):
 
         logger.log_agent_turn_finished(stopped_reason="Listed files")
 
+        #step 2: read file
         logger.log_agent_turn_started()
 
         step_2_request = ToolRequest(
@@ -93,10 +107,167 @@ class ScriptedAgent(Agent):
         logger.log_tool_finished(step_2_result)
 
         logger.log_agent_turn_finished(
-            stopped_reason=f"Read file: {step_2_request.params.path}"
+            stopped_reason=f"Read file: {step_2_request.params['path']}"
         )
 
-        
+        #step 3: search for function
+        logger.log_agent_turn_started()
+
+        step_3_request = ToolRequest(
+            tool = ToolName.SEARCH,
+            params = SearchParams(
+                query = "def add",
+                glob = "**/*.py",
+            ).model_dump(
+                mode = "json"
+            ),
+            request_id = f"{self.run_id}-003"
+        )
+
+        logger.log_tool_started(step_3_request)
+
+        step_3_result = search(
+            request_id = f"{self.run_id}-003",
+            workspace_root = workspace_root,
+            params = SearchParams(**step_3_request.params)
+        )
+
+        logger.log_tool_finished(step_3_result)
+
+        logger.log_agent_turn_finished(
+            stopped_reason=f"Searched for: {step_3_request.params['query']}"
+        )
+
+        #step 4: apply patch
+        logger.log_agent_turn_started()
+
+        step_4_request = ToolRequest(
+            tool = ToolName.APPLY_PATCH,
+            params = ApplyPatchParams(
+                unified_diff = """--- a/src/calculator.py
+                                  +++ b/src/calculator.py
+                                  @@ -1,4 +1,4 @@
+                                  def add(a, b):
+                                  -    return a - b  # BUG: should be +
+                                  +    return a + b
+                                """
+            ).model_dump(
+                mode = "json"
+            ),
+            request_id = f"{self.run_id}-004"
+        )
+
+        logger.log_tool_started(step_4_request)
+
+        step_4_result = apply_patch(
+            workspace_root = workspace_root,
+            params = ApplyPatchParams(**step_4_request.params),
+            step_id = 4,
+            artifacts_dir = artifacts_dir / "diffs"
+        )
+
+        if step_4_result.status == ToolStatus.ERROR:
+            return AgentResult(
+                success = False,
+                stopped_reason = "tool_error",
+                steps_taken = 4,
+                patch_files = [],
+                duration_sec = 0.0
+            )
+        else:
+            logger.log_patch_applied(
+                step_id = 4,
+                changed_files = ["src/calculator.py"],
+                patch_artifact_path = str(artifacts_dir / "diffs")
+            )
+
+        logger.log_tool_finished(step_4_result)
+
+        logger.log_agent_turn_finished(
+            stopped_reason=f"Applied patch: {step_4_request.params['unified_diff']}"
+        )
+
+        #step 5: run tests
+        logger.log_agent_turn_started()
+
+        step_5_request = ToolRequest(
+            tool = ToolName.RUN,
+            params = RunParams(
+                command = "pytest -q",
+                timeout_sec = 60,
+                env = None
+            ).model_dump(
+                mode = "json"
+            ),
+            request_id = f"{self.run_id}-005"
+        )
+
+        logger.log_tool_started(step_5_request)
+        logger.log_tests_started(
+            command = "pytest -q"
+        )
+
+        step_5_result = run_tool(
+            workspace_root = workspace_root,
+            params = RunParams(**step_5_request.params),
+            sandbox = sandbox,
+            step_id = 5,
+            artifacts_dir = artifacts_dir / "diffs"
+        )
+
+        if step_5_result.status == ToolStatus.ERROR:
+            return AgentResult(
+                success = False,
+                stopped_reason = "run_error",
+                steps_taken = 5,
+                patch_files = [str(artifacts_dir / "diffs" / f"step_{4:04d}.patch")],
+                duration_sec = 0.0
+            )
+
+        logger.log_tool_finished(step_5_result)
+
+        tests_passed = step_5_result.exit_code == 0
+
+        logger.log_tests_finished(
+           exit_code = step_5_result.exit_code,
+           passed = tests_passed,
+           stdout_path = step_5_result.stdout_path,
+           stderr_path = step_5_result.stderr_path,
+        )
+
+        if tests_passed:
+            logger.log_agent_turn_finished(stopped_reason = "success")
+            return AgentResult(
+                success = True,
+                stopped_reason = "success",
+                steps_taken = 5,
+                patch_files = [str(artifacts_dir / "diffs" / f"step_{4:04d}.patch")],
+                duration_sec = 0.0,
+                exit_code = step_5_result.exit_code
+            )
+        else:
+            logger.log_agent_turn_finished(stopped_reason = "tests_failed")
+            return AgentResult(
+                success = False,
+                stopped_reason = "tests_failed",
+                steps_taken = 5,
+                patch_files = [str(artifacts_dir / "diffs" / f"step_{4:04d}.patch")],
+                duration_sec = 0.0
+            )
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 

@@ -213,7 +213,7 @@ class TestReadFileNotFound:
 
         assert result.status == ToolStatus.ERROR
         assert result.error is not None
-        assert "FileNotFoundError" in result.error.error_type or "not found" in result.error.message.lower()
+        assert result.error.error_type == "file_not_found" or "not found" in result.error.message.lower()
 
 
 @requires_ripgrep

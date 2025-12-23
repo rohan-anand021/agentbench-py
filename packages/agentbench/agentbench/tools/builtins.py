@@ -1,3 +1,5 @@
+from agentbench.sandbox.docker_sandbox import DockerRunResult
+from agentbench.sandbox.docker_sandbox import DockerSandbox
 import json
 import subprocess
 from collections import deque
@@ -5,17 +7,25 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from agentbench.sandbox.filesystem import resolve_safe_path, safe_glob
+from agentbench.sandbox.filesystem import (
+    PathEscapeError,
+    SymLinkError,
+    resolve_safe_path,
+    safe_glob,
+)
 from agentbench.tools.contract import (
     ListFilesParams,
     ReadFileParams,
     SearchParams,
+    RunParams,
     ToolError,
     ToolName,
     ToolResult,
     ToolStatus,
 )
 from agentbench.util.process import check_exit_code
+from agentbench.util.timeout import ToolTimeoutError, TOOL_TIMEOUTS
+from agentbench.util.truncation import truncate_output
 
 
 def list_files(
@@ -50,29 +60,46 @@ def list_files(
 
         data = {"files": [str(f) for f in files]}
 
-    except Exception as e:
-        error = e
-
-    finally:
-        ended_at = datetime.now()
-
-        return ToolResult(
-            request_id = request_id,
-            tool = ToolName.LIST_FILES,
-            status = ToolStatus.SUCCESS if not error else ToolStatus.ERROR,
-            started_at = started_at,
-            ended_at = ended_at,
-            duration_sec = (ended_at - started_at).total_seconds(),
-            data = data,
-            error = ToolError(
-                error_type = type(error).__name__,
-                message = str(error),
-                details = {f"Error {type(error).__name__}": f"{str(error)}"}
-            ) if error else None,
-            exit_code = None,
-            stdout_path = None,
-            stderr_path = None
+    except PathEscapeError as e:
+        error = ToolError(
+            error_type="path_escape",
+            message=str(e),
+            details={}
         )
+    except SymLinkError as e:
+        error = ToolError(
+            error_type="symlink_blocked",
+            message=str(e),
+            details={}
+        )
+    except ToolTimeoutError as e:
+        error = ToolError(
+            error_type="timeout",
+            message=str(e),
+            details={"timeout_sec": TOOL_TIMEOUTS["list_files"]}
+        )
+    except Exception as e:
+        error = ToolError(
+            error_type=type(e).__name__,
+            message=str(e),
+            details={}
+        )
+
+    ended_at = datetime.now()
+
+    return ToolResult(
+        request_id=request_id,
+        tool=ToolName.LIST_FILES,
+        status=ToolStatus.SUCCESS if error is None else ToolStatus.ERROR,
+        started_at=started_at,
+        ended_at=ended_at,
+        duration_sec=(ended_at - started_at).total_seconds(),
+        data=data,
+        error=error,
+        exit_code=None,
+        stdout_path=None,
+        stderr_path=None
+    )
 
 
 def read_file(
@@ -129,42 +156,57 @@ def read_file(
         }
 
     except FileNotFoundError as e:
-        error = e
-
-    except UnicodeDecodeError as e:
-        error = e
-
-    finally:
-        ended_at = datetime.now()
-
-        error_obj = None
-        if error is not None:
-            if isinstance(error, UnicodeDecodeError):
-                error_obj = ToolError(
-                    error_type = "binary_file",
-                    message = "Cannot read binary file",
-                    details = {}
-                )
-            else:
-                error_obj = ToolError(
-                    error_type = type(error).__name__,
-                    message = str(error),
-                    details = {}
-                )
-
-        return ToolResult(
-            request_id = request_id,
-            tool = ToolName.READ_FILE,
-            status = ToolStatus.SUCCESS if not error else ToolStatus.ERROR,
-            started_at = started_at,
-            ended_at = ended_at,
-            duration_sec = (ended_at - started_at).total_seconds(),
-            data = data,
-            error = error_obj,
-            exit_code = None,
-            stdout_path = None,
-            stderr_path = None
+        error = ToolError(
+            error_type="file_not_found",
+            message=f"File does not exist: {params.path}",
+            details={"path": params.path}
         )
+    except UnicodeDecodeError as e:
+        error = ToolError(
+            error_type="binary_file",
+            message="Cannot read binary file",
+            details={"path": params.path}
+        )
+    except PathEscapeError as e:
+        error = ToolError(
+            error_type="path_escape",
+            message=str(e),
+            details={"path": params.path}
+        )
+    except SymLinkError as e:
+        error = ToolError(
+            error_type="symlink_blocked",
+            message=str(e),
+            details={"path": params.path}
+        )
+    except ToolTimeoutError as e:
+        error = ToolError(
+            error_type="timeout",
+            message=str(e),
+            details={"timeout_sec": TOOL_TIMEOUTS["read_file"]}
+        )
+    except Exception as e:
+        error = ToolError(
+            error_type=type(e).__name__,
+            message=str(e),
+            details={}
+        )
+
+    ended_at = datetime.now()
+
+    return ToolResult(
+        request_id=request_id,
+        tool=ToolName.READ_FILE,
+        status=ToolStatus.SUCCESS if error is None else ToolStatus.ERROR,
+        started_at=started_at,
+        ended_at=ended_at,
+        duration_sec=(ended_at - started_at).total_seconds(),
+        data=data,
+        error=error,
+        exit_code=None,
+        stdout_path=None,
+        stderr_path=None
+    )
 
 
 def search(
@@ -178,8 +220,8 @@ def search(
     Uses ripgrep (rg) if available, falls back to Python.
     """
 
-    error = None
-    timeout = 60
+    error: ToolError | None = None
+    timeout = TOOL_TIMEOUTS["search"]
     started_at = datetime.now()
     data: dict[str, Any] = {}
 
@@ -198,19 +240,24 @@ def search(
 
     try:
         run = subprocess.run(
-            args = cmd,
-            cwd = workspace_root,
-            capture_output = True,
-            text = True,
-            timeout = 60,
-            check = False
+            args=cmd,
+            cwd=workspace_root,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False
         )
 
         if run.returncode != 0:
             if run.returncode == 1:
+                # No matches found - not an error
                 pass
             else:
-                error = check_exit_code("search", run.returncode)
+                error = ToolError(
+                    error_type="ripgrep_error",
+                    message=f"ripgrep exited with code {run.returncode}",
+                    details={"exit_code": run.returncode, "stderr": run.stderr}
+                )
 
         match_count = 0
         matches: list[dict] = []
@@ -259,50 +306,138 @@ def search(
         data["truncated"] = match_count > params.max_results
         data["total_matches"] = min(match_count, params.max_results)
 
-
     except subprocess.TimeoutExpired as e:
-        error = e
+        error = ToolError(
+            error_type="timeout",
+            message=f"Search timed out after {timeout} seconds",
+            details={"timeout_sec": timeout}
+        )
     except OSError as e:
-        error = e
-
-    finally:
-        ended_at = datetime.now()
-
-        error_obj = None
-        if error is not None:
-            if isinstance(error, subprocess.TimeoutExpired):
-                error_obj = ToolError(
-                    error_type = "timeout",
-                    message = f"Operation timed out after {timeout} seconds",
-                    details = {}
-                )
-            elif isinstance(error, OSError):
-                error_obj = ToolError(
-                    error_type = "docker",
-                    message = f"Docker unavailable: {str(error)}",
-                    details = {}
-                )
-            else:
-                error_obj = ToolError(
-                    error_type = type(error).__name__,
-                    message = str(error),
-                    details = {}
-                )
-
-        return ToolResult(
-            request_id = request_id,
-            tool = ToolName.SEARCH,
-            status = ToolStatus.SUCCESS if not error else ToolStatus.ERROR,
-            started_at = started_at,
-            ended_at = ended_at,
-            duration_sec = (ended_at - started_at).total_seconds(),
-            data = data,
-            error = error_obj,
-            exit_code = None,
-            stdout_path = None,
-            stderr_path = None
+        error = ToolError(
+            error_type="ripgrep_unavailable",
+            message=f"ripgrep not available: {str(e)}",
+            details={}
+        )
+    except json.JSONDecodeError as e:
+        error = ToolError(
+            error_type="parse_error",
+            message=f"Failed to parse ripgrep output: {str(e)}",
+            details={}
+        )
+    except Exception as e:
+        error = ToolError(
+            error_type=type(e).__name__,
+            message=str(e),
+            details={}
         )
 
+    ended_at = datetime.now()
 
+    return ToolResult(
+        request_id=request_id,
+        tool=ToolName.SEARCH,
+        status=ToolStatus.SUCCESS if error is None else ToolStatus.ERROR,
+        started_at=started_at,
+        ended_at=ended_at,
+        duration_sec=(ended_at - started_at).total_seconds(),
+        data=data,
+        error=error,
+        exit_code=None,
+        stdout_path=None,
+        stderr_path=None
+    )
+
+
+def run_tool(
+    workspace_root: Path,
+    params: RunParams,
+    sandbox: DockerSandbox,
+    step_id: int,
+    artifacts_dir: Path
+) -> ToolResult:
+    """
+    Execute a command in the sandbox.
+    
+    Commands run inside Docker with network=none.
+    Stdout/stderr are captured to artifacts.
+
+    **Implementation details:**
+
+    | Aspect | Behavior |
+    |--------|----------|
+    | Timeout | Use `params.timeout_sec` or default from task config |
+    | Output files | Save to `logs/tool_step_NNNN_stdout.txt` and `_stderr.txt` |
+    | Exit code | Capture and return in result |
+    | Large output | Truncate to configurable limit (e.g., 100KB) |
+
+    **Success data:**
+    ```python
+    {
+        "exit_code": 0,
+        "stdout_path": "logs/tool_step_0005_stdout.txt",
+        "stderr_path": "logs/tool_step_0005_stderr.txt"
+    }
+    ```
+    """
+
+    started_at = datetime.now()
+    error = None
+    exit_code = None
+    stdout_path = None
+    stderr_path = None
+
+    try:
+        exit_code, stdout_path, stderr_path = sandbox.run(
+            workspace_host_path = workspace_root,
+            command = params.command,
+            network = "none",
+            timeout_sec = params.timeout_sec if params.timeout_sec else 60,
+            stdout_path = artifacts_dir / "logs" / f"tool_step_{step_id:04d}_stdout.txt",
+            stderr_path = artifacts_dir / "logs" / f"tool_step_{step_id:04d}_stderr.txt",
+        )
+
+        if exit_code is not None:
+            exit_error = check_exit_code("run", exit_code)
+            if exit_error:
+                error = ToolError(
+                    error_type = "abnormal_exit",
+                    message = str(exit_error),
+                    details = {"exit_code": exit_code}
+                )
+
+    except TimeoutError as e:
+        error = ToolError(
+            error_type = "timeout",
+            message = str(e)
+        )
+    except Exception as e:
+        error = ToolError(
+            error_type = "sandbox_error",
+            message = str(e)
+        )
+
+    ended_at = datetime.now()
+
+    data = None
+    if not error and exit_code is not None:
+        data = {
+            "exit_code": exit_code,
+            "stdout_path": str(stdout_path) if stdout_path else None,
+            "stderr_path": str(stderr_path) if stderr_path else None,
+        }
+
+    return ToolResult(
+        request_id = f"tool_step_{step_id:04d}",
+        tool = ToolName.RUN,
+        status = ToolStatus.SUCCESS if not error else ToolStatus.ERROR,
+        started_at = started_at,
+        ended_at = ended_at,
+        duration_sec = (ended_at - started_at).total_seconds(),
+        data = data,
+        error = error,
+        exit_code = exit_code,
+        stdout_path = str(stdout_path) if stdout_path else None,
+        stderr_path = str(stderr_path) if stderr_path else None,
+    )
 
 

@@ -50,6 +50,7 @@ testpaths = ["packages"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 asyncio_mode = "auto"
+addopts = "-m 'not integration and not docker'"
 markers = [
     "integration: marks tests as integration tests (deselect with '-m \"not integration\"')",
     "docker: marks tests as requiring Docker (deselect with '-m \"not docker\"')",

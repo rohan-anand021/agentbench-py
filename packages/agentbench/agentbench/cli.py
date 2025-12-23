@@ -1,17 +1,41 @@
 from pathlib import Path
 
 import typer
+from rich.console import Console
+from rich.table import Table
 
+from agentbench.agent_runner import run_agent_attempt
+from agentbench.agents.base import AgentResult
 from agentbench.logging import setup_logging
 from agentbench.run_task import run_task
+from agentbench.schemas.attempt_record import AttemptRecord
 from agentbench.suite_runner import run_suite
 from agentbench.tasks.exceptions import SuiteNotFoundError
-from agentbench.tasks.loader import load_suite
+from agentbench.tasks.loader import load_suite, load_task
 
 app = typer.Typer(no_args_is_help=True)
+console = Console()
 
-# Initialize logging when the CLI module is loaded
 setup_logging()
+
+
+def print_agent_summary(record: AttemptRecord) -> None:
+    """Print a pretty summary table for an agent run."""
+    table = Table(title="Agent Run Summary")
+    table.add_column("Metric", style="cyan")
+    table.add_column("Value", style="green")
+    
+    table.add_row("Run ID", record.run_id)
+    table.add_row("Task ID", record.task_id)
+    table.add_row("Success", "✓" if record.result.passed else "✗")
+    table.add_row("Exit Code", str(record.result.exit_code))
+    table.add_row("Duration", f"{record.duration_sec:.1f}s")
+    table.add_row("Variant", record.variant or "baseline")
+    
+    if record.result.failure_reason:
+        table.add_row("Failure Reason", str(record.result.failure_reason))
+    
+    console.print(table)
 
 
 @app.command("run-task")
@@ -35,6 +59,65 @@ def run_task_cmd(
     """
     path = run_task(task, out)
     typer.echo(f"Run completed. Artifacts saved to: {path}")
+
+
+@app.command("run-agent")
+def run_agent_cmd(
+    task_path: Path = typer.Option(
+        ...,
+        "--task",
+        "-t",
+        help="Path to the task YAML file",
+    ),
+    variant: str = typer.Option(
+        "scripted",
+        "--variant",
+        "-v",
+        help="Agent variant to use (e.g., scripted)",
+    ),
+    out_dir: Path = typer.Option(
+        Path("artifacts"),
+        "--out",
+        "-o",
+        help="Output directory for artifacts",
+    ),
+):
+    """
+    Run an agent on a single task.
+    
+    This command loads a task, runs the specified agent variant,
+    and produces an attempt record with all artifacts.
+    """
+    try:
+        task = load_task(task_path)
+        
+        workspace_dir = out_dir / "workspace" / task.id
+        artifacts_dir = out_dir / "agent_runs" / task.id
+        
+        workspace_dir.mkdir(parents=True, exist_ok=True)
+        artifacts_dir.mkdir(parents=True, exist_ok=True)
+        
+        console.print(f"[bold blue]Running agent '{variant}' on task '{task.id}'...[/bold blue]")
+        
+        record = run_agent_attempt(
+            task=task,
+            workspace_dir=workspace_dir,
+            artifacts_dir=artifacts_dir,
+        )
+        
+        print_agent_summary(record)
+        
+        console.print(f"\n[dim]Artifacts saved to: {artifacts_dir}[/dim]")
+        
+        if not record.result.passed:
+            raise typer.Exit(code=1)
+            
+    except FileNotFoundError as e:
+        console.print(f"[red]Error: Task file not found: {task_path}[/red]")
+        raise typer.Exit(code=1) from None
+    except Exception as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise typer.Exit(code=1) from None
 
 
 @app.command("validate-suite")
@@ -62,7 +145,6 @@ def validate_suite_cmd(
         )
 
         if runs_dir is None:
-            # Empty suite - warning already printed by run_suite
             raise typer.Exit(code=0)
 
         typer.echo(f"Validated suite {suite}: {runs_dir}")

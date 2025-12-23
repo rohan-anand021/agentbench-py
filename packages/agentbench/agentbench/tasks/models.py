@@ -27,6 +27,10 @@ class SetupSpec(BaseModel):
 class RunSpec(BaseModel):
     command: str
 
+class AgentSpec(BaseModel):
+    entrypoint: str
+    max_steps: int
+
 
 class TaskSpec(BaseModel):
     model_config = ConfigDict(
@@ -40,6 +44,7 @@ class TaskSpec(BaseModel):
     setup: SetupSpec
     run: RunSpec
     source_path: Path
+    agent: AgentSpec | None = None
 
     @field_serializer("source_path")
     def serialize_path(self, v: Path) -> str:

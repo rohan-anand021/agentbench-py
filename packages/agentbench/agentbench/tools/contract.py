@@ -23,8 +23,8 @@ class ListFilesParams(BaseModel):
 
 class ReadFileParams(BaseModel):
     path: str
-    start_line: str | None = None
-    end_line: str | None = None
+    start_line: int | None = None
+    end_line: int | None = None
 
 class SearchParams(BaseModel):
     query: str

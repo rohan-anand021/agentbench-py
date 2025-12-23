@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, Mock, patch
 
 import pytest
 
+from agentbench.scoring.taxonomy import FailureReason
 from agentbench.tasks.loader import load_task
 from agentbench.tasks.models import (
     EnvironmentSpec,
@@ -40,13 +41,13 @@ def mock_task_spec() -> TaskSpec:
 @pytest.fixture
 def toy_fail_pytest_task() -> TaskSpec:
     """Loads the real toy_fail_pytest task."""
-    task_yaml = (
-        Path(__file__).parent.parent.parent.parent
-        / "tasks"
-        / "custom-dev"
-        / "toy_fail_pytest"
-        / "task.yaml"
-    )
+    repo_root = Path(__file__).parent
+    for _ in range(10):
+        if (repo_root / "tasks").exists() and (repo_root / "packages").exists():
+            break
+        repo_root = repo_root.parent
+    
+    task_yaml = repo_root / "tasks" / "custom-dev" / "toy_fail_pytest" / "task.yaml"
     return load_task(task_yaml)
 
 
@@ -130,7 +131,7 @@ def test_validate_baseline_setup_failures_are_caught(tmp_path: Path):
 
     assert isinstance(result, ValidationResult)
     assert result.valid is False
-    assert result.error_reason == "setup_failed"
+    assert result.error_reason == FailureReason.GIT_CLONE_FAILED
 
 
 # =============================================================================

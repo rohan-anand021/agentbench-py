@@ -1,8 +1,14 @@
+from __future__ import annotations
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from pathlib import Path
+from typing import TYPE_CHECKING
+
 from agentbench.tasks.models import TaskSpec
 from agentbench.schemas.attempt_record import AttemptRecord
+
+if TYPE_CHECKING:
+    from agentbench.sandbox.docker_sandbox import DockerSandbox
 
 @dataclass
 class AgentResult:
@@ -11,15 +17,17 @@ class AgentResult:
     patch_files: list[str]
     duration_sec: float
     stopped_reason: str
+    exit_code: int
 class Agent(ABC):
 
     @abstractmethod
     def run(
         self,
         task: TaskSpec,
+        sandbox: "DockerSandbox",
         workspace_root: Path,
         artifacts_dir: Path,
-        failing_output: str
+        failing_output: str,
     ) -> AgentResult:
         """
         Attempt to fix a failing test.
