@@ -53,7 +53,7 @@ def mock_dependencies():
         patch("agentbench.suite_runner.Progress") as mock_progress_class,
     ):
         mock_console.print = MagicMock()
-        mock_ulid.new.return_value = MagicMock(__str__=lambda x: "01TESTULID000000000000")
+        mock_ulid.ULID.return_value = MagicMock(__str__=lambda x: "01TESTULID000000000000")
 
         # Mock Progress context manager properly
         mock_progress = MagicMock()

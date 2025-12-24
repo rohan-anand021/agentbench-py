@@ -39,7 +39,7 @@ def mock_dependencies():
         mock_load.return_value = make_mock_task()
         mock_clone.return_value = (Path("/logs/stdout"), Path("/logs/stderr"), 0)
         mock_checkout.return_value = (Path("/logs/stdout"), Path("/logs/stderr"), 0)
-        mock_ulid.new.return_value = MagicMock(__str__=lambda x: "01TESTULID000000000000")
+        mock_ulid.ULID.return_value = MagicMock(__str__=lambda x: "01TESTULID000000000000")
 
         mock_sandbox = MagicMock()
         mock_sandbox.run.return_value = MagicMock(exit_code=0)
@@ -306,7 +306,7 @@ class TestRunTaskReturnValue:
         time.sleep(0.01)
 
         # Reset mock to return a different ULID
-        mock_dependencies["ulid"].new.return_value = MagicMock(
+        mock_dependencies["ulid"].ULID.return_value = MagicMock(
             __str__=lambda x: "01TESTULID000000000001"
         )
 

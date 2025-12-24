@@ -37,7 +37,7 @@ def run_task(
     runs_dir = ensure_dir(Path(out_dir / "runs"))
 
     timestamp = datetime.now().strftime(str_format)
-    run_id = str(ulid.new())
+    run_id = str(ulid.ULID())
 
     logger.info("Starting run %s for task %s", run_id, task.id)
 

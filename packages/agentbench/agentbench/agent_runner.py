@@ -34,7 +34,7 @@ def run_agent_attempt(
     5. Record attempt
     """
 
-    run_id = str(ulid())
+    run_id = str(ulid.ULID())
     started_at = datetime.now()
     
     result = None

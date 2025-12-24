@@ -58,7 +58,7 @@ def run_suite(suite_name: str, tasks_root: Path, out_dir: Path) -> Path:
     run_dir = ensure_dir(
         Path(out_dir / "runs" / f"{timestamp}__{suite_name}__baseline")
     )
-    run_id = str(ulid.new())
+    run_id = str(ulid.ULID())
     run_json_path = Path(run_dir / "run.json")
     started_at = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     logs_parent_dir = Path(run_dir / "logs")
