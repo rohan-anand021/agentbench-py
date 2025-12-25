@@ -1,3 +1,4 @@
+import logging
 import shutil
 import subprocess
 import tempfile
@@ -12,6 +13,8 @@ from agentbench.tools.contract import (
     ToolResult,
     ToolStatus,
 )
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -111,6 +114,7 @@ def parse_unified_diff(patch_txt: str) -> list[FilePatch]:
         )
         all_patches.append(file_patch)
 
+    logger.debug("Parsed %d file patches from unified diff", len(all_patches))
     return all_patches
 
 
@@ -198,6 +202,8 @@ def validate_patch(
                     if not matched:
                         errors.append(f"{old_path}: context at line {hunk.old_start} does not match file content")
 
+    if errors:
+        logger.warning("Patch validation found %d errors", len(errors))
     return errors
 
 
@@ -210,6 +216,7 @@ def apply_patch(
 
     started_at = datetime.now()
     request_id = f"patch_{step_id}"
+    logger.debug("Applying patch at step %d", step_id)
 
     with tempfile.NamedTemporaryFile(mode='w', suffix='.patch', delete=False) as f:
         f.write(params.unified_diff)
@@ -228,6 +235,7 @@ def apply_patch(
     )
 
     if dry_run.returncode != 0:
+        logger.error("Patch dry-run failed: %s", dry_run.stderr)
         ended_at = datetime.now()
 
         return ToolResult(
@@ -260,6 +268,7 @@ def apply_patch(
 
     patches = parse_unified_diff(params.unified_diff)
     changed_files = [p.new_path for p in patches if p.new_path and p.new_path != "/dev/null"]
+    logger.info("Patch applied successfully, changed %d files", len(changed_files))
 
     ended_at = datetime.now()
 

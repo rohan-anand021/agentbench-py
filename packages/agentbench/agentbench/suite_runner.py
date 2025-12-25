@@ -1,4 +1,5 @@
 import json
+import logging
 import signal
 from collections import Counter
 from datetime import datetime
@@ -19,6 +20,8 @@ from agentbench.tasks.loader import load_suite
 from agentbench.tasks.validator import validate_baseline
 from agentbench.util.jsonl import append_jsonl
 from agentbench.util.process import ensure_dir
+
+logger = logging.getLogger(__name__)
 
 console = Console()
 
@@ -44,11 +47,12 @@ def run_suite(suite_name: str, tasks_root: Path, out_dir: Path) -> Path:
         - `invalid_count: int`
         - Return run directory path
     """
-
+    logger.info("Starting suite validation for %s", suite_name)
     tasks = load_suite(tasks_root=tasks_root, suite_name=suite_name)
 
     # Handle empty suite
     if not tasks:
+        logger.warning("No tasks found in suite %s", suite_name)
         console.print(
             f"[yellow]Warning:[/yellow] No tasks found in suite '{suite_name}'"
         )
@@ -71,6 +75,7 @@ def run_suite(suite_name: str, tasks_root: Path, out_dir: Path) -> Path:
         "task_count": len(tasks),
         "harness_version": "dev",
     }
+    logger.debug("Created run directory %s with run_id %s", run_dir, run_id)
 
     with run_json_path.open("w") as f:
         json.dump(runs_data, f, indent=2)
@@ -140,7 +145,7 @@ def run_suite(suite_name: str, tasks_root: Path, out_dir: Path) -> Path:
                         f"  Task {i + 1}/{len(tasks)}: {task.id}... {status}"
                     )
                 except Exception as e:
-                    # Handle partial failures - continue with other tasks
+                    logger.error("Task %s failed with error: %s", task.id, e)
                     invalid_count += 1
                     results.append((task.id, False, f"error: {str(e)}"))
                     err_msg = f"  Task {i + 1}/{len(tasks)}: {task.id}..."
@@ -166,6 +171,8 @@ def run_suite(suite_name: str, tasks_root: Path, out_dir: Path) -> Path:
 
     with run_json_path.open("w") as f:
         json.dump(runs_data, f, indent=2)
+
+    logger.info("Suite validation complete: %d valid, %d invalid", valid_count, invalid_count)
 
     # Summary table
     console.print()

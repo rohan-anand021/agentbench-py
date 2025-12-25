@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -16,6 +17,8 @@ from agentbench.schemas.attempt_record import (
 from agentbench.scoring import FailureReason
 from agentbench.tasks.models import TaskSpec
 from agentbench.tasks.validator import validate_baseline
+
+logger = logging.getLogger(__name__)
 
 
 def run_agent_attempt(
@@ -36,6 +39,7 @@ def run_agent_attempt(
 
     run_id = str(ulid.ULID())
     started_at = datetime.now()
+    logger.info("Starting agent attempt %s for task %s", run_id, task.id)
     
     result = None
     validation_result = None
@@ -58,11 +62,13 @@ def run_agent_attempt(
         return agents[entrypoint](run_id = run_id)
 
     try:
+        logger.debug("Creating Docker sandbox with image %s", task.environment.docker_image)
         sandbox = DockerSandbox(
             image = task.environment.docker_image,
             workdir = task.environment.workdir
         )
 
+        logger.debug("Running baseline validation")
         validation_result = validate_baseline(
             task = task,
             workspace_dir = workspace_dir,
@@ -70,10 +76,12 @@ def run_agent_attempt(
         )
 
         if validation_result.exit_code == 0:
+            logger.error("Baseline validation passed unexpectedly for task %s", task.id)
             raise ValueError(
                 "baseline validation passed unexpectedly - task is invalid"
             )
 
+        logger.debug("Instantiating agent with entrypoint %s", task.agent.entrypoint)
         agent = get_agent(
             entrypoint = task.agent.entrypoint,
             run_id = run_id
@@ -90,11 +98,15 @@ def run_agent_attempt(
         exit_code = result.exit_code
 
     except KeyboardInterrupt:
+        logger.warning("Agent attempt %s interrupted by user", run_id)
         failure_reason = FailureReason.INTERRUPTED
-    except Exception:
+    except Exception as e:
+        logger.exception("Agent attempt %s failed with error: %s", run_id, e)
         failure_reason = FailureReason.UNKNOWN
 
     ended_at = datetime.now()
+    duration = (ended_at - started_at).total_seconds()
+    logger.info("Agent attempt %s completed in %.2fs, passed=%s", run_id, duration, result.success if result else False)
 
     return AttemptRecord(
         run_id = run_id,

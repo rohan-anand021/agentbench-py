@@ -1,6 +1,7 @@
+import json
+import logging
 from agentbench.sandbox.docker_sandbox import DockerRunResult
 from agentbench.sandbox.docker_sandbox import DockerSandbox
-import json
 import subprocess
 from collections import deque
 from datetime import datetime
@@ -26,6 +27,8 @@ from agentbench.tools.contract import (
 from agentbench.util.process import check_exit_code
 from agentbench.util.timeout import ToolTimeoutError, TOOL_TIMEOUTS
 from agentbench.util.truncation import truncate_output
+
+logger = logging.getLogger(__name__)
 
 
 def list_files(
@@ -58,6 +61,7 @@ def list_files(
             pattern = params.glob
         )
 
+        logger.debug("list_files found %d files in %s", len(files), params.root)
         data = {"files": [str(f) for f in files]}
 
     except PathEscapeError as e:
@@ -79,6 +83,7 @@ def list_files(
             details={"timeout_sec": TOOL_TIMEOUTS["list_files"]}
         )
     except Exception as e:
+        logger.error("list_files failed: %s", e)
         error = ToolError(
             error_type=type(e).__name__,
             message=str(e),
@@ -154,6 +159,7 @@ def read_file(
             "end_line": total_lines if not truncated else None,
             "lines_included": None if not truncated else f"1-5000, {total_lines - 4999}-{total_lines}"
         }
+        logger.debug("read_file read %d lines from %s, truncated=%s", total_lines, params.path, truncated)
 
     except FileNotFoundError as e:
         error = ToolError(
@@ -186,6 +192,7 @@ def read_file(
             details={"timeout_sec": TOOL_TIMEOUTS["read_file"]}
         )
     except Exception as e:
+        logger.error("read_file failed for %s: %s", params.path, e)
         error = ToolError(
             error_type=type(e).__name__,
             message=str(e),
@@ -224,6 +231,7 @@ def search(
     timeout = TOOL_TIMEOUTS["search"]
     started_at = datetime.now()
     data: dict[str, Any] = {}
+    logger.debug("Searching for '%s' with glob=%s", params.query, params.glob)
 
     cmd = ["rg",
             "--json",
@@ -305,6 +313,7 @@ def search(
         data["matches"] = matches
         data["truncated"] = match_count > params.max_results
         data["total_matches"] = min(match_count, params.max_results)
+        logger.debug("Search found %d matches", data["total_matches"])
 
     except subprocess.TimeoutExpired as e:
         error = ToolError(
@@ -325,6 +334,7 @@ def search(
             details={}
         )
     except Exception as e:
+        logger.error("Search failed: %s", e)
         error = ToolError(
             error_type=type(e).__name__,
             message=str(e),
@@ -385,6 +395,7 @@ def run_tool(
     exit_code = None
     stdout_path = None
     stderr_path = None
+    logger.debug("Executing command in sandbox: %s", params.command)
 
     try:
         exit_code, stdout_path, stderr_path = sandbox.run(
@@ -411,12 +422,14 @@ def run_tool(
             message = str(e)
         )
     except Exception as e:
+        logger.error("Sandbox execution failed: %s", e)
         error = ToolError(
             error_type = "sandbox_error",
             message = str(e)
         )
 
     ended_at = datetime.now()
+    logger.debug("Command completed with exit_code=%s in %.2fs", exit_code, (ended_at - started_at).total_seconds())
 
     data = None
     if not error and exit_code is not None:

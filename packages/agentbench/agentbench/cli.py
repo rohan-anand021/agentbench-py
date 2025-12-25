@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 import typer
@@ -12,6 +13,8 @@ from agentbench.schemas.attempt_record import AttemptRecord
 from agentbench.suite_runner import run_suite
 from agentbench.tasks.exceptions import SuiteNotFoundError
 from agentbench.tasks.loader import load_suite, load_task
+
+logger = logging.getLogger(__name__)
 
 app = typer.Typer(no_args_is_help=True)
 console = Console()
@@ -57,7 +60,9 @@ def run_task_cmd(
     This command runs a task inside a Docker container, captures all output,
     and stores the results in an artifact directory with a unique run ID.
     """
+    logger.info("Running task from %s", task)
     path = run_task(task, out)
+    logger.info("Task completed, artifacts saved to %s", path)
     typer.echo(f"Run completed. Artifacts saved to: {path}")
 
 
@@ -89,6 +94,7 @@ def run_agent_cmd(
     and produces an attempt record with all artifacts.
     """
     try:
+        logger.info("Loading task from %s", task_path)
         task = load_task(task_path)
         
         workspace_dir = out_dir / "workspace" / task.id
@@ -113,9 +119,11 @@ def run_agent_cmd(
             raise typer.Exit(code=1)
             
     except FileNotFoundError as e:
+        logger.error("Task file not found: %s", task_path)
         console.print(f"[red]Error: Task file not found: {task_path}[/red]")
         raise typer.Exit(code=1) from None
     except Exception as e:
+        logger.exception("Error running agent: %s", e)
         console.print(f"[red]Error: {e}[/red]")
         raise typer.Exit(code=1) from None
 
@@ -140,6 +148,7 @@ def validate_suite_cmd(
     Tasks where tests pass are marked as invalid.
     """
     try:
+        logger.info("Validating suite %s", suite)
         runs_dir = run_suite(
             suite_name=suite, tasks_root=tasks_root, out_dir=out
         )
@@ -149,6 +158,7 @@ def validate_suite_cmd(
 
         typer.echo(f"Validated suite {suite}: {runs_dir}")
     except SuiteNotFoundError as e:
+        logger.error("Suite not found: %s", suite)
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1) from None
 
@@ -171,6 +181,7 @@ def list_tasks_cmd(
         for i, task in enumerate(tasks):
             typer.echo(f" Task{i + 1}: {task.id}")
     except SuiteNotFoundError as e:
+        logger.error("Suite not found: %s", suite)
         typer.echo(f"Error: {e}", err=True)
         raise typer.Exit(code=1) from None
 

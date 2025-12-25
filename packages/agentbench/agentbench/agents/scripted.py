@@ -1,3 +1,4 @@
+import logging
 from pathlib import Path
 
 from agentbench.agents.base import Agent, AgentResult
@@ -16,6 +17,8 @@ from agentbench.tools.contract import (
 )
 from agentbench.tools.patching import apply_patch
 from agentbench.util.events import EventLogger
+
+logger = logging.getLogger(__name__)
 
 
 class ScriptedAgent(Agent):
@@ -40,23 +43,25 @@ class ScriptedAgent(Agent):
 
     def __init__(self, run_id: str):
         self.run_id = run_id
+        logger.debug("ScriptedAgent initialized with run_id=%s", run_id)
 
     def run(
         self,
-        _task: TaskSpec,  # Unused in scripted agent - uses hard-coded sequence
+        _task: TaskSpec,
         sandbox: DockerSandbox,
         workspace_root: Path,
         artifacts_dir: Path,
-        _failing_output: str,  # Unused in scripted agent - uses hard-coded patch
+        _failing_output: str,
     ) -> AgentResult:
+        logger.info("Starting scripted agent run %s", self.run_id)
         
-        logger = EventLogger(
+        event_logger = EventLogger(
             run_id = self.run_id,
             events_file = artifacts_dir / "events.jsonl"
         )
 
-        #step 1: list files
-        logger.log_agent_turn_started()
+        event_logger.log_agent_turn_started()
+        logger.debug("Step 1: listing files")
 
         step_1_request = ToolRequest(
             tool = ToolName.LIST_FILES,
@@ -67,7 +72,7 @@ class ScriptedAgent(Agent):
             request_id = f"{self.run_id}-001"
         )
 
-        logger.log_tool_started(step_1_request)
+        event_logger.log_tool_started(step_1_request)
 
         step_1_result = list_files(
             request_id = f"{self.run_id}-001",
@@ -77,12 +82,12 @@ class ScriptedAgent(Agent):
             )
         )
 
-        logger.log_tool_finished(step_1_result)
+        event_logger.log_tool_finished(step_1_result)
 
-        logger.log_agent_turn_finished(stopped_reason="Listed files")
+        event_logger.log_agent_turn_finished(stopped_reason="Listed files")
 
-        #step 2: read file
-        logger.log_agent_turn_started()
+        logger.debug("Step 2: reading file")
+        event_logger.log_agent_turn_started()
 
         step_2_request = ToolRequest(
             tool = ToolName.READ_FILE,
@@ -96,7 +101,7 @@ class ScriptedAgent(Agent):
             request_id = f"{self.run_id}-002"
         )
 
-        logger.log_tool_started(step_2_request)
+        event_logger.log_tool_started(step_2_request)
 
         step_2_result = read_file(
             request_id = f"{self.run_id}-002",
@@ -104,14 +109,14 @@ class ScriptedAgent(Agent):
             params = ReadFileParams(**step_2_request.params)
         )
 
-        logger.log_tool_finished(step_2_result)
+        event_logger.log_tool_finished(step_2_result)
 
-        logger.log_agent_turn_finished(
+        event_logger.log_agent_turn_finished(
             stopped_reason=f"Read file: {step_2_request.params['path']}"
         )
 
-        #step 3: search for function
-        logger.log_agent_turn_started()
+        logger.debug("Step 3: searching for function")
+        event_logger.log_agent_turn_started()
 
         step_3_request = ToolRequest(
             tool = ToolName.SEARCH,
@@ -124,7 +129,7 @@ class ScriptedAgent(Agent):
             request_id = f"{self.run_id}-003"
         )
 
-        logger.log_tool_started(step_3_request)
+        event_logger.log_tool_started(step_3_request)
 
         step_3_result = search(
             request_id = f"{self.run_id}-003",
@@ -132,14 +137,14 @@ class ScriptedAgent(Agent):
             params = SearchParams(**step_3_request.params)
         )
 
-        logger.log_tool_finished(step_3_result)
+        event_logger.log_tool_finished(step_3_result)
 
-        logger.log_agent_turn_finished(
+        event_logger.log_agent_turn_finished(
             stopped_reason=f"Searched for: {step_3_request.params['query']}"
         )
 
-        #step 4: apply patch
-        logger.log_agent_turn_started()
+        logger.debug("Step 4: applying patch")
+        event_logger.log_agent_turn_started()
 
         step_4_request = ToolRequest(
             tool = ToolName.APPLY_PATCH,
@@ -157,7 +162,7 @@ class ScriptedAgent(Agent):
             request_id = f"{self.run_id}-004"
         )
 
-        logger.log_tool_started(step_4_request)
+        event_logger.log_tool_started(step_4_request)
 
         step_4_result = apply_patch(
             workspace_root = workspace_root,
@@ -167,6 +172,7 @@ class ScriptedAgent(Agent):
         )
 
         if step_4_result.status == ToolStatus.ERROR:
+            logger.error("Patch application failed at step 4")
             return AgentResult(
                 success = False,
                 stopped_reason = "tool_error",
@@ -175,20 +181,20 @@ class ScriptedAgent(Agent):
                 duration_sec = 0.0
             )
         else:
-            logger.log_patch_applied(
+            event_logger.log_patch_applied(
                 step_id = 4,
                 changed_files = ["src/calculator.py"],
                 patch_artifact_path = str(artifacts_dir / "diffs")
             )
 
-        logger.log_tool_finished(step_4_result)
+        event_logger.log_tool_finished(step_4_result)
 
-        logger.log_agent_turn_finished(
+        event_logger.log_agent_turn_finished(
             stopped_reason=f"Applied patch: {step_4_request.params['unified_diff']}"
         )
 
-        #step 5: run tests
-        logger.log_agent_turn_started()
+        logger.debug("Step 5: running tests")
+        event_logger.log_agent_turn_started()
 
         step_5_request = ToolRequest(
             tool = ToolName.RUN,
@@ -202,8 +208,8 @@ class ScriptedAgent(Agent):
             request_id = f"{self.run_id}-005"
         )
 
-        logger.log_tool_started(step_5_request)
-        logger.log_tests_started(
+        event_logger.log_tool_started(step_5_request)
+        event_logger.log_tests_started(
             command = "pytest -q"
         )
 
@@ -216,6 +222,7 @@ class ScriptedAgent(Agent):
         )
 
         if step_5_result.status == ToolStatus.ERROR:
+            logger.error("Test execution failed at step 5")
             return AgentResult(
                 success = False,
                 stopped_reason = "run_error",
@@ -224,11 +231,11 @@ class ScriptedAgent(Agent):
                 duration_sec = 0.0
             )
 
-        logger.log_tool_finished(step_5_result)
+        event_logger.log_tool_finished(step_5_result)
 
         tests_passed = step_5_result.exit_code == 0
 
-        logger.log_tests_finished(
+        event_logger.log_tests_finished(
            exit_code = step_5_result.exit_code,
            passed = tests_passed,
            stdout_path = step_5_result.stdout_path,
@@ -236,7 +243,8 @@ class ScriptedAgent(Agent):
         )
 
         if tests_passed:
-            logger.log_agent_turn_finished(stopped_reason = "success")
+            logger.info("Agent run %s completed successfully", self.run_id)
+            event_logger.log_agent_turn_finished(stopped_reason = "success")
             return AgentResult(
                 success = True,
                 stopped_reason = "success",
@@ -246,7 +254,8 @@ class ScriptedAgent(Agent):
                 exit_code = step_5_result.exit_code
             )
         else:
-            logger.log_agent_turn_finished(stopped_reason = "tests_failed")
+            logger.warning("Agent run %s failed: tests did not pass", self.run_id)
+            event_logger.log_agent_turn_finished(stopped_reason = "tests_failed")
             return AgentResult(
                 success = False,
                 stopped_reason = "tests_failed",

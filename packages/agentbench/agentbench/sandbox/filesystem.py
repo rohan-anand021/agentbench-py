@@ -1,4 +1,7 @@
+import logging
 from pathlib import Path
+
+logger = logging.getLogger(__name__)
 
 
 class PathEscapeError(Exception):
@@ -38,6 +41,7 @@ def resolve_safe_path(
     candidate = (workspace_root / relative_path).resolve()
 
     if not candidate.is_relative_to(workspace_root):
+        logger.warning("Path escape attempt: %s is not relative to %s", candidate, workspace_root)
         raise PathEscapeError(candidate, workspace_root)
 
     if not allow_symlinks:
@@ -47,8 +51,10 @@ def resolve_safe_path(
             path_so_far = path_so_far / part
 
             if path_so_far.is_symlink():
+                logger.warning("Symlink blocked: %s", path_so_far)
                 raise SymLinkError(path_so_far)
 
+    logger.debug("Resolved safe path: %s -> %s", relative_path, candidate)
     return candidate
 
 
@@ -70,6 +76,7 @@ def safe_glob(
     files = list(workspace_root.glob(pattern))
     files = [f for f in files if not f.is_symlink() and '.git' not in f.parts]
 
+    logger.debug("safe_glob matched %d files for pattern %s", len(files), pattern)
     return sorted(files)
 
 

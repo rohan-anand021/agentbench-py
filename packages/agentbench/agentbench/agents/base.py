@@ -1,4 +1,5 @@
 from __future__ import annotations
+import logging
 from dataclasses import dataclass
 from abc import ABC, abstractmethod
 from pathlib import Path
@@ -9,6 +10,8 @@ from agentbench.schemas.attempt_record import AttemptRecord
 
 if TYPE_CHECKING:
     from agentbench.sandbox.docker_sandbox import DockerSandbox
+
+logger = logging.getLogger(__name__)
 
 @dataclass
 class AgentResult:

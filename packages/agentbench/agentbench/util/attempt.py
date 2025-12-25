@@ -19,7 +19,7 @@ Usage:
 """
 
 from __future__ import annotations
-
+import logging
 from datetime import datetime
 from pathlib import Path
 
@@ -35,6 +35,8 @@ from agentbench.schemas.attempt_record import (
 from agentbench.scoring.taxonomy import FailureReason
 from agentbench.tasks.models import TaskSpec
 from agentbench.util.jsonl import append_jsonl
+
+logger = logging.getLogger(__name__)
 
 
 class AttemptContext:
@@ -79,8 +81,10 @@ class AttemptContext:
         self.started_at = None
         self.ended_at = None
         self.duration = None
+        logger.debug("AttemptContext created for task %s with run_id %s", task.id, self.run_id)
 
     def mark_stage(self, stage: str) -> None:
+        logger.debug("Marking stage: %s", stage)
         self.current_stage = stage
 
     def set_exit_code(self, code: int) -> None:
@@ -95,6 +99,7 @@ class AttemptContext:
     def __enter__(self) -> AttemptContext:
         self.started_at = datetime.now()
         self.attempted = True
+        logger.debug("AttemptContext entered for run %s", self.run_id)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb) -> bool:
@@ -140,5 +145,6 @@ class AttemptContext:
         )
         attempts_file = self.logs_dir.parent / "attempts.jsonl"
 
+        logger.info("Writing attempt record for run %s, valid=%s, exit_code=%s", self.run_id, self.valid, self.exit_code)
         append_jsonl(attempts_file, attempt_record.model_dump(mode="json"))
         return False

@@ -1,9 +1,12 @@
+import logging
 from pathlib import Path
 from datetime import datetime, timezone
 
 from agentbench.schemas.events import Event, EventType
 from agentbench.util.jsonl import append_jsonl
 from agentbench.tools.contract import ToolRequest, ToolResult
+
+logger = logging.getLogger(__name__)
 
 
 class EventLogger:
@@ -13,6 +16,7 @@ class EventLogger:
         self.run_id = run_id
         self.events_file = events_file
         self._step_counter = 0
+        logger.debug("EventLogger initialized for run %s, writing to %s", run_id, events_file)
 
     def next_step_id(self) -> int:
         self._step_counter += 1
@@ -27,6 +31,7 @@ class EventLogger:
             payload=payload,
         )
 
+        logger.debug("Logged event %s (step %d) for run %s", event_type, event.step_id, self.run_id)
         append_jsonl(self.events_file, event.model_dump(mode="json"))
 
     def log_tool_started(self, request: ToolRequest) -> None:
