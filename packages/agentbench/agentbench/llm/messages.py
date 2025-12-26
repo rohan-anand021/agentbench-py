@@ -78,7 +78,7 @@ class LLMResponse(BaseModel):
     object: Literal["response"] = "response"
     created_at: int
     model: str
-    status: str
+    status: str = "completed"
     output: list[OutputMessage | OutputFunctionCall]
     usage: TokenUsage | None = None
     error: dict[str, Any] | None = None

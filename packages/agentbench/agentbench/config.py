@@ -7,7 +7,7 @@ from agentbench.llm.config import LLMConfig, ProviderConfig, LLMProvider
 class AgentBenchSettings(BaseSettings):
     openrouter_api_key: SecretStr | None = None
     
-    default_model: str = "anthropic/claude-3.5-sonnet"
+    default_model: str = "mistralai/devstral-2512:free"
     default_provider: LLMProvider = LLMProvider.OPENROUTER
 
     artifacts_dir: Path = Path("artifacts")
